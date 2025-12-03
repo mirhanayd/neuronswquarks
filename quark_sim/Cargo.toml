@@ -1,0 +1,24 @@
+[package]
+name = "quark_sim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Candle: Rust için minimalist ML framework (Hugging Face)
+candle-core = { version = "0.9.1", default-features = false }
+candle-nn = { version = "0.9.1", default-features = false }
+# Rastgele sayı üretimi için
+rand = "0.8"
+# Grafik çizimi için
+plotters = "0.3"
+# Tarih/saat için
+chrono = "0.4"
+# Terminal içi grafik
+textplots = "0.8"
+# İnteraktif GUI için
+eframe = "0.29"
+egui = "0.29"
+egui_plot = "0.29"
+# JSON serileştirme
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
