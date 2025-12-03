@@ -3162,6 +3162,7 @@ dependencies = [
  "egui_plot",
  "plotters",
  "rand 0.8.5",
+ "safetensors",
  "serde",
  "serde_json",
  "textplots",

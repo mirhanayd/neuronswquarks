@@ -3,15 +3,15 @@
 use candle_core::{Result, Tensor};
 use candle_nn::{Linear, Module, VarBuilder};
 
-// SİMÜLASYON PARAMETRELERİ
+// SİMÜLASYON PARAMETRELERİ (Yüksek Kapasite + AdamW)
 pub const INPUT_SIZE: usize = 3;     // Girdi: x, y, z mesafeleri
-pub const HIDDEN1_SIZE: usize = 128; // İlk gizli katman
-pub const HIDDEN2_SIZE: usize = 64;  // İkinci gizli katman
-pub const HIDDEN3_SIZE: usize = 32;  // Üçüncü gizli katman
+pub const HIDDEN1_SIZE: usize = 256; // İlk gizli katman (128 → 256)
+pub const HIDDEN2_SIZE: usize = 128; // İkinci gizli katman (64 → 128)
+pub const HIDDEN3_SIZE: usize = 64;  // Üçüncü gizli katman (32 → 64)
 pub const OUTPUT_SIZE: usize = 1;    // Çıktı: Potansiyel Enerji
 
 /// Kuark potansiyelini tahmin eden sinir ağı modeli
-/// 4 katmanlı derin ağ: 3 -> 128 -> 64 -> 32 -> 1
+/// 4 katmanlı derin ağ: 3 -> 256 -> 128 -> 64 -> 1
 pub struct QuarkModel {
     layer1: Linear,
     layer2: Linear,

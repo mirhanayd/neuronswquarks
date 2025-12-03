@@ -192,11 +192,42 @@ Epoch 7500: Kayıp / Loss (MSE) = 0.016 GeV²
 
 ---
 
-### Option 2: Load Previous Session / Önceki Oturumu Yükle
+### Option 2: Load Trained Model (⚡ FASTEST - 1 Second!) / Eğitilmiş Model Yükle (⚡ EN HIZLI - 1 Saniye!)
 
-If you want to reload a previous simulation without retraining:
+**🧠 The Smart Way / Akıllı Yöntem:**
 
-Yeniden eğitim yapmadan önceki bir simülasyonu yüklemek istiyorsanız:
+If you already trained once, you can skip the 2-3 minute training and load the pre-trained "brain":
+
+Bir kez eğitim yaptıysanız, 2-3 dakikalık eğitimi atlayıp önceden eğitilmiş "beyni" yükleyebilirsiniz:
+
+```powershell
+# Load trained model weights (⚡ 1 second startup!)
+# Eğitilmiş model ağırlıklarını yükle (⚡ 1 saniye başlangıç!)
+cargo run --release -- --load-model outputs/20251203_143052_GMT/trained_model.safetensors
+```
+
+**What happens / Ne olur:**
+1. ✅ Loads neural network weights from `.safetensors` file
+2. ✅ Skips 5000 epochs of training (saves 2-3 minutes!)
+3. ✅ Runs DIS simulation with pre-trained model
+4. ✅ Opens GUI immediately
+5. ✅ **Total time: ~5 seconds** ⚡
+
+**When to use / Ne zaman kullanılır:**
+- After first training / İlk eğitimden sonra
+- Testing different DIS parameters / Farklı DIS parametrelerini test ederken
+- Quick demonstrations / Hızlı gösterimler için
+- Production deployments / Üretim ortamları için
+
+**Format:** SafeTensors (Hugging Face standard, used by Stable Diffusion, BERT, etc.)
+
+---
+
+### Option 3: Load Previous Session / Önceki Oturumu Yükle
+
+If you want to reload exact previous results (including plots):
+
+Tam önceki sonuçları (grafikler dahil) yüklemek istiyorsanız:
 
 ```powershell
 # Load specific session / Belirli oturumu yükle
@@ -206,8 +237,8 @@ cargo run --release -- --load outputs/20251203_143052_GMT/session.json
 **What happens / Ne olur:**
 1. ✅ Loads saved neural network predictions
 2. ✅ Loads electron trajectories
-3. ✅ Opens GUI immediately (no training)
-4. ✅ ~5 seconds total
+3. ✅ Opens GUI immediately (no training, no simulation)
+4. ✅ ~3 seconds total
 
 **When to use / Ne zaman kullanılır:**
 - Want to review previous results / Önceki sonuçları gözden geçirmek istiyorsanız
@@ -240,10 +271,11 @@ quark_sim/
 │   └── scattering.rs    # DIS simulation / DIS simülasyonu
 ├── outputs/             # Timestamped result folders / Zaman damgalı sonuç klasörleri
 │   └── YYYYMMDD_HHMMSS_GMT/
-│       ├── training_loss.svg
-│       ├── cornell_potential.svg
-│       ├── scattering.svg
-│       └── session.json
+│       ├── training_loss.svg           # Training convergence plot
+│       ├── cornell_potential.svg       # Potential comparison
+│       ├── scattering.svg              # DIS electron trajectories
+│       ├── session.json                # Complete session data
+│       └── trained_model.safetensors   # 🧠 Neural network weights (reusable!)
 ├── Cargo.toml           # Rust dependencies / Rust bağımlılıkları
 └── README.md
 ```
@@ -363,8 +395,9 @@ rustup update
 
 ```powershell
 # Full workflow / Tam iş akışı
-cargo run --release                                          # New simulation / Yeni simülasyon
-cargo run --release -- --load outputs/20251203_143052_GMT/session.json  # Load session / Oturum yükle
+cargo run --release                                          # New simulation with training / Eğitimli yeni simülasyon (~2-3 min)
+cargo run --release -- --load-model outputs/20251203_143052_GMT/trained_model.safetensors  # ⚡ Load trained brain (1 sec)
+cargo run --release -- --load outputs/20251203_143052_GMT/session.json  # Load exact results / Tam sonuçları yükle (3 sec)
 
 # Development / Geliştirme
 cargo build                                                  # Build only / Sadece derle
@@ -413,9 +446,15 @@ GitHub: [@mirhanayd](https://github.com/mirhanayd)
 
 **⚡ Quick Start / Hızlı Başlangıç:**
 ```powershell
+# First time (with training) / İlk kez (eğitimle)
 git clone https://github.com/mirhanayd/neuronswquarks.git
 cd neuronswquarks/quark_sim
 cargo run --release
+
+# Next times (skip training) / Sonraki seferler (eğitimi atla)
+cargo run --release -- --load-model outputs/LATEST_FOLDER/trained_model.safetensors
 ```
+
+**Pro Tip / İpucu:** After first run, always use `--load-model` to save time! The trained "brain" is reusable.
 
 **Enjoy simulating quantum physics! / Kuantum fiziği simülasyonunun tadını çıkarın! 🔬✨**

@@ -7,6 +7,7 @@ edition = "2021"
 # Candle: Rust için minimalist ML framework (Hugging Face)
 candle-core = { version = "0.9.1", default-features = false }
 candle-nn = { version = "0.9.1", default-features = false }
+safetensors = "0.4"
 # Rastgele sayı üretimi için
 rand = "0.8"
 # Grafik çizimi için

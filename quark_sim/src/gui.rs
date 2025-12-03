@@ -1,18 +1,22 @@
-// GUI bileşenleri
+// GUI ve İnteraktif Simülasyon
 
 use eframe::egui;
-use egui_plot::{Line, PlotPoints};
+use egui_plot::{Line, PlotPoints, Plot, Points};
 use serde::{Serialize, Deserialize};
 use std::fs;
+use std::sync::Arc; // Modeli threadler arası paylaşmak için
+use candle_core::Device;
+use crate::model::QuarkModel;
+use crate::scattering::{Electron, get_proton_quarks, TargetQuark};
 
-/// Elektron yörüngesi (DIS için)
+/// Elektron yörüngesi (Veri saklama için)
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ElectronData {
     pub trajectory: Vec<(f32, f32)>,
     pub impact_parameter: f32,
 }
 
-/// GUI için veri yapısı
+/// GUI veri yapısı (Save/Load için)
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AppData {
     pub loss_history: Vec<(usize, f32)>,
@@ -28,7 +32,6 @@ pub struct AppData {
 }
 
 impl AppData {
-    /// Oturum verilerini JSON dosyasına kaydet
     pub fn save_session(&self, output_dir: &str) -> std::io::Result<String> {
         let filename = format!("{}/session.json", output_dir);
         let json = serde_json::to_string_pretty(self)?;
@@ -36,7 +39,6 @@ impl AppData {
         Ok(filename)
     }
     
-    /// JSON dosyasından oturum verilerini yükle
     pub fn load_session(filename: &str) -> std::io::Result<Self> {
         let json = fs::read_to_string(filename)?;
         let data: AppData = serde_json::from_str(&json)?;
@@ -44,9 +46,20 @@ impl AppData {
     }
 }
 
-/// GUI uygulaması
+/// Canlı Simülasyon için Gerekli Veriler (Model vb.)
+/// Bu kısım JSON'a kaydedilmez, çalışma anında oluşur.
+pub struct InteractiveContext {
+    pub model: Arc<QuarkModel>,
+    pub device: Device,
+    pub mean: f32,
+    pub std: f32,
+    pub live_electrons: Vec<Electron>, // Canlı uçan elektronlar
+    pub targets: Vec<TargetQuark>,
+}
+
 pub struct SimulationApp {
     data: AppData,
+    interactive: Option<InteractiveContext>, // Varsa interaktif mod çalışır
     show_loss: bool,
     show_theory: bool,
     show_nn: bool,
@@ -54,9 +67,10 @@ pub struct SimulationApp {
 }
 
 impl SimulationApp {
-    pub fn new(data: AppData) -> Self {
+    pub fn new(data: AppData, interactive: Option<InteractiveContext>) -> Self {
         Self {
             data,
+            interactive,
             show_loss: true,
             show_theory: true,
             show_nn: true,
@@ -67,195 +81,155 @@ impl SimulationApp {
 
 impl eframe::App for SimulationApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("🔬 Cornell Potansiyeli - Kuark Simülasyonu");
-            ui.separator();
+        // Canlı Fizik Döngüsü (Eğer interaktif moddaysak)
+        if let Some(ref mut context) = self.interactive {
+            // Her karede elektronları biraz ilerlet
+            let dt = 0.05;
+            let force_scale = 0.2;
             
-            // Dosya bilgileri
-            ui.horizontal(|ui| {
-                ui.label("📁 Kayıtlı dosyalar:");
-                ui.label(&self.data.loss_file);
-                ui.label(&self.data.potential_file);
-                if let Some(ref scattering) = self.data.scattering_file {
-                    ui.label(scattering);
+            for e in &mut context.live_electrons {
+                // Ekrandan çok çıkmadığı sürece güncelle
+                if e.x < 10.0 && e.x > -10.0 && e.y.abs() < 8.0 {
+                    let _ = e.update_step(
+                        &context.model, 
+                        &context.targets, 
+                        context.mean, 
+                        context.std, 
+                        &context.device, 
+                        dt, 
+                        force_scale
+                    );
                 }
-            });
-            
-            ui.separator();
-            
-            // İki sütunlu layout (Eğitim + Potansiyel)
-            ui.columns(2, |columns| {
-                // Sol sütun: Eğitim Kaybı
-                columns[0].group(|ui| {
-                    ui.heading("Eğitim Kaybı");
-                    ui.checkbox(&mut self.show_loss, "Göster");
+            }
+            // Sürekli güncelleme iste (Animasyon için)
+            ctx.request_repaint(); 
+        }
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("🔬 Cornell Potansiyeli ve İnteraktif Proton Laboratuvarı");
+                
+                if self.interactive.is_some() {
+                    ui.colored_label(egui::Color32::GREEN, "🟢 CANLI MOD AKTİF: Grafiğe tıklayarak elektron ateşleyin!");
+                } else {
+                    ui.label("🔴 Sadece İzleme Modu (Model yüklü değil)");
+                }
+
+                ui.separator();
+                
+                // --- İNTERAKTİF GRAFİK ALANI ---
+                ui.group(|ui| {
+                    ui.heading("⚛️ Proton Çarpıştırıcısı (Tıkla ve Ateşle!)");
                     
-                    if self.show_loss {
-                        let loss_points: PlotPoints = self.data.loss_history.iter()
-                            .map(|(e, l)| [*e as f64, *l as f64])
+                    let plot = Plot::new("interactive_plot")
+                        .height(500.0)
+                        .data_aspect(1.0)
+                        .allow_drag(true)
+                        .allow_zoom(true)
+                        .coordinates_formatter(egui_plot::Corner::LeftBottom, egui_plot::CoordinatesFormatter::default());
+
+                    plot.show(ui, |plot_ui| {
+                        // 1. Hedef Kuarkları Çiz
+                        let targets = if let Some(ref ctx) = self.interactive {
+                            ctx.targets.clone()
+                        } else {
+                            get_proton_quarks()
+                        };
+
+                        let quark_points: PlotPoints = targets.iter()
+                            .map(|q| [q.x as f64, q.y as f64])
                             .collect();
                         
-                        egui_plot::Plot::new("loss_plot")
-                            .height(300.0)
-                            .show(ui, |plot_ui| {
-                                plot_ui.line(Line::new(loss_points).name("Kayıp (MSE)"));
-                            });
+                        plot_ui.points(Points::new(quark_points).radius(8.0).color(egui::Color32::RED).name("Kuarklar"));
+
+                        // 2. Geçmiş Elektron Yörüngelerini Çiz (Statik)
+                        if let Some(ref electrons) = self.data.electrons {
+                             for (i, e) in electrons.iter().enumerate() {
+                                let points: PlotPoints = e.trajectory.iter().map(|(x, y)| [*x as f64, *y as f64]).collect();
+                                plot_ui.line(Line::new(points).color(egui::Color32::from_gray(100)).width(1.0).name(format!("Geçmiş {}", i)));
+                             }
+                        }
+
+                        // 3. CANLI Elektronları Çiz
+                        if let Some(ref ctx) = self.interactive {
+                            for (i, e) in ctx.live_electrons.iter().enumerate() {
+                                let points: PlotPoints = e.trajectory.iter().map(|(x, y)| [*x as f64, *y as f64]).collect();
+                                // Canlı elektronlar parlak sarı olsun
+                                plot_ui.line(Line::new(points).color(egui::Color32::YELLOW).width(2.5).name(format!("Canlı {}", i)));
+                                // Başını nokta olarak koy
+                                plot_ui.points(Points::new(vec![[e.x as f64, e.y as f64]]).radius(4.0).color(egui::Color32::YELLOW));
+                            }
+                        }
+
+                        // 4. MOUSE TIKLAMASI İLE ATEŞLEME
+                        if self.interactive.is_some() && plot_ui.response().clicked() {
+                            // Tıklanan koordinatları al
+                            if let Some(pointer_pos) = plot_ui.pointer_coordinate() {
+                                let x = pointer_pos.x as f32;
+                                let y = pointer_pos.y as f64 as f32; // f64 -> f32
+                                
+                                // Yeni elektron oluştur
+                                // Tıkladığın yerden, sağa doğru (veya merkeze doğru) fırlat
+                                // Angry Birds tarzı: Tıkladığın yer başlangıç, hız sabit (0.5)
+                                let vx = 0.5; 
+                                let vy = 0.0; // Düz fırlat, fizik onu bükecek
+                                
+                                let new_electron = Electron::new(x, y, vx, vy);
+                                
+                                if let Some(ref mut ctx) = self.interactive {
+                                    ctx.live_electrons.push(new_electron);
+                                }
+                            }
+                        }
+                    });
+                    
+                    ui.label("İpucu: Mouse ile grafiğin herhangi bir yerine tıklayın. Elektron oradan doğacak ve sağa doğru uçarken kuarklara çarpıp saçılacak.");
+                    if ui.button("Temizle (Canlı Parçacıklar)").clicked() {
+                        if let Some(ref mut ctx) = self.interactive {
+                            ctx.live_electrons.clear();
+                        }
                     }
                 });
                 
-                // Sağ sütun: Cornell Potansiyeli
-                columns[1].group(|ui| {
-                    ui.heading("Cornell Potansiyeli");
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut self.show_theory, "Teori");
-                        ui.checkbox(&mut self.show_nn, "NN Tahmini");
-                        ui.checkbox(&mut self.show_points, "Test Noktaları");
-                    });
-                    
-                    egui_plot::Plot::new("potential_plot")
-                        .height(300.0)
-                        .show(ui, |plot_ui| {
-                            if self.show_theory {
-                                let theory_points: PlotPoints = self.data.potential_theory.iter()
-                                    .map(|(r, v)| [*r as f64, *v as f64])
-                                    .collect();
-                                plot_ui.line(Line::new(theory_points).name("Teorik Cornell").color(egui::Color32::BLUE));
-                            }
-                            
-                            if self.show_nn {
-                                let nn_points: PlotPoints = self.data.potential_nn.iter()
-                                    .map(|(r, v)| [*r as f64, *v as f64])
-                                    .collect();
-                                plot_ui.line(Line::new(nn_points).name("Sinir Ağı").color(egui::Color32::RED));
-                            }
-                            
-                            if self.show_points {
-                                let test_points: PlotPoints = self.data.test_distances.iter()
-                                    .zip(self.data.nn_values.iter())
-                                    .map(|(r, v)| [*r as f64, *v as f64])
-                                    .collect();
-                                plot_ui.points(egui_plot::Points::new(test_points).name("Test Noktaları").color(egui::Color32::GREEN));
+                ui.separator();
+
+                // --- İSTATİSTİK GRAFİKLERİ (ESKİ KISIM) ---
+                ui.collapsing("📉 Eğitim ve Potansiyel Grafikleri", |ui| {
+                     ui.columns(2, |columns| {
+                        // Sol: Eğitim Kaybı
+                        columns[0].group(|ui| {
+                            ui.heading("Eğitim Kaybı");
+                            ui.checkbox(&mut self.show_loss, "Göster");
+                            if self.show_loss {
+                                let points: PlotPoints = self.data.loss_history.iter().map(|(e, l)| [*e as f64, *l as f64]).collect();
+                                Plot::new("loss").height(200.0).show(ui, |p| p.line(Line::new(points)));
                             }
                         });
-                });
-            });
-            
-            ui.separator();
-            
-            // Alt bölüm: Test Sonuçları Tablosu
-            ui.collapsing("📊 Detaylı Test Sonuçları", |ui| {
-                egui::ScrollArea::vertical()
-                    .max_height(200.0)
-                    .show(ui, |ui| {
-                        egui::Grid::new("test_results_grid")
-                            .striped(true)
-                            .show(ui, |ui| {
-                                ui.label("Mesafe (fm)");
-                                ui.label("Cornell (GeV)");
-                                ui.label("NN (GeV)");
-                                ui.label("Hata (%)");
-                                ui.end_row();
-                                
-                                for i in 0..self.data.test_distances.len() {
-                                    let r = self.data.test_distances[i];
-                                    let cornell = self.data.cornell_values[i];
-                                    let nn = self.data.nn_values[i];
-                                    let error = ((nn - cornell).abs() / cornell.abs()) * 100.0;
-                                    
-                                    ui.label(format!("{:.2}", r));
-                                    ui.label(format!("{:.6}", cornell));
-                                    ui.label(format!("{:.6}", nn));
-                                    ui.colored_label(
-                                        if error < 5.0 { egui::Color32::GREEN } 
-                                        else if error < 20.0 { egui::Color32::YELLOW }
-                                        else { egui::Color32::RED },
-                                        format!("{:.2}%", error)
-                                    );
-                                    ui.end_row();
+                        // Sağ: Potansiyel
+                        columns[1].group(|ui| {
+                            ui.heading("Cornell Potansiyeli");
+                            Plot::new("potential").height(200.0).show(ui, |p| {
+                                if self.show_theory {
+                                    let pts: PlotPoints = self.data.potential_theory.iter().map(|(x,y)| [*x as f64, *y as f64]).collect();
+                                    p.line(Line::new(pts).color(egui::Color32::BLUE).name("Teori"));
+                                }
+                                if self.show_nn {
+                                    let pts: PlotPoints = self.data.potential_nn.iter().map(|(x,y)| [*x as f64, *y as f64]).collect();
+                                    p.line(Line::new(pts).color(egui::Color32::RED).name("Yapay Zeka"));
                                 }
                             });
-                    });
-            });
-            
-            ui.separator();
-            
-            // Deep Inelastic Scattering Paneli
-            if let Some(ref electrons) = self.data.electrons {
-                ui.group(|ui| {
-                    ui.heading("⚛️ Deep Inelastic Scattering - Elektron Yörüngeleri");
-                    
-                    // İstatistikler
-                    let mut large_angle = 0;
-                    let mut small_angle = 0;
-                    for e in electrons {
-                        if let (Some(first), Some(last)) = (e.trajectory.first(), e.trajectory.last()) {
-                            let dx = last.0 - first.0;
-                            let dy = last.1 - first.1;
-                            let angle = (dy / dx).atan().abs().to_degrees();
-                            if angle > 10.0 {
-                                large_angle += 1;
-                            } else {
-                                small_angle += 1;
-                            }
-                        }
-                    }
-                    
-                    ui.horizontal(|ui| {
-                        ui.label(format!("🎯 Toplam elektron / Total electrons: {}", electrons.len()));
-                        ui.label(format!("📐 Geniş açı (>10°): {}", large_angle));
-                        ui.label(format!("📏 Küçük açı (<10°): {}", small_angle));
-                    });
-                    
-                    egui_plot::Plot::new("scattering_plot")
-                        .height(400.0)
-                        .width(ui.available_width())
-                        .show(ui, |plot_ui| {
-                            // Hedef noktası (merkez)
-                            let target: PlotPoints = vec![[0.0, 0.0]].into();
-                            plot_ui.points(
-                                egui_plot::Points::new(target)
-                                    .name("Kuark Hedefi / Quark Target")
-                                    .color(egui::Color32::RED)
-                                    .radius(8.0)
-                            );
-                            
-                            // Elektron yörüngelerini çiz
-                            let colors = [
-                                egui::Color32::BLUE,
-                                egui::Color32::GREEN,
-                                egui::Color32::from_rgb(255, 165, 0), // Orange
-                                egui::Color32::from_rgb(128, 0, 128), // Purple
-                                egui::Color32::from_rgb(0, 128, 128), // Teal
-                                egui::Color32::YELLOW,
-                                egui::Color32::from_rgb(255, 20, 147), // Pink
-                                egui::Color32::from_rgb(0, 255, 127), // Spring green
-                            ];
-                            
-                            for (i, electron) in electrons.iter().enumerate() {
-                                let trajectory: PlotPoints = electron.trajectory.iter()
-                                    .map(|&(x, y)| [x as f64, y as f64])
-                                    .collect();
-                                
-                                let color = colors[i % colors.len()];
-                                plot_ui.line(
-                                    Line::new(trajectory)
-                                        .name(format!("e⁻ {}", i + 1))
-                                        .color(color)
-                                        .width(1.5)
-                                );
-                            }
                         });
+                     });
                 });
-            }
+            });
         });
     }
 }
 
-/// GUI'yi başlat
-pub fn launch_gui(app_data: AppData, title: &str) {
+pub fn launch_gui(app_data: AppData, title: &str, interactive: Option<InteractiveContext>) {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 800.0])
+            .with_inner_size([1200.0, 900.0])
             .with_title(title),
         ..Default::default()
     };
@@ -263,6 +237,6 @@ pub fn launch_gui(app_data: AppData, title: &str) {
     eframe::run_native(
         title,
         native_options,
-        Box::new(|_cc| Ok(Box::new(SimulationApp::new(app_data)))),
+        Box::new(|_cc| Ok(Box::new(SimulationApp::new(app_data, interactive)))),
     ).unwrap();
 }

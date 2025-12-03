@@ -1,162 +1,162 @@
-﻿// Cornell Potansiyeli Sinir Ağı Simülasyonu
-// Kuark-antikuark etkileşimlerini modelleyen derin öğrenme projesi
-
-mod physics;     // Fizik sabitleri ve Cornell potansiyeli
-mod model;       // Sinir ağı modeli
-mod training;    // Eğitim ve test fonksiyonları
-mod plotting;    // Grafik çizim
-mod gui;         // GUI bileşenleri
-mod scattering;  // Deep Inelastic Scattering simülasyonu
+﻿mod physics;
+mod model;
+mod training;
+mod plotting;
+mod gui;
+mod scattering;
 
 use candle_core::{Device, Result};
 use chrono::Utc;
+use std::path::Path;
+use std::sync::Arc; // Arc ekledik
 
-use gui::{AppData, launch_gui};
-use plotting::{plot_results, show_terminal_plots};
-use training::{generate_training_data, train_model, test_model, create_model_and_optimizer};
-use scattering::{simulate_scattering, plot_scattering, ScatteringParams};
+use gui::{AppData, launch_gui, InteractiveContext};
+use plotting::plot_results;
+use training::{generate_training_data, train_model, test_model, create_model_and_optimizer, save_model_with_config, load_model_with_config};
+use scattering::{simulate_scattering, plot_scattering, ScatteringParams, get_proton_quarks};
 
 fn main() -> Result<()> {
-    // Komut satırı argümanlarını kontrol et
     let args: Vec<String> = std::env::args().collect();
     
-    // Eğer --load parametresi varsa, kayıtlı oturumu yükle
+    // --load (Sadece Kayıt İzleme - Canlı Mod Yok)
     if args.len() >= 3 && args[1] == "--load" {
         let session_file = &args[2];
-        println!("📂 Kayıtlı oturum yükleniyor / Loading saved session: {}", session_file);
-        
         match AppData::load_session(session_file) {
             Ok(app_data) => {
-                println!("✅ Oturum başarıyla yüklendi / Session loaded successfully!");
-                println!("🖥️  İnteraktif GUI penceresi açılıyor / Opening interactive GUI...");
-                launch_gui(app_data, "Cornell Potansiyeli - Kayıtlı Oturum");
+                // İnteraktif context yok (None), çünkü model yok
+                launch_gui(app_data, "Kayıtlı Oturum (İzleme Modu)", None);
                 return Ok(());
             }
-            Err(e) => {
-                eprintln!("❌ Oturum yüklenemedi / Session load failed: {}", e);
-                eprintln!("Yeni simülasyon başlatılıyor / Starting new simulation...\n");
-            }
+            Err(e) => eprintln!("Hata: {}", e),
         }
     }
     
-    // Normal akış: Yeni simülasyon çalıştır
-    println!("🚀 Cornell Potansiyeli Simülasyonu / Cornell Potential Simulation");
-    println!("   Kuark-Antikuark Etkileşim Modeli / Quark-Antiquark Interaction Model\n");
+    // --load-model (Eğitilmiş Modeli Yükle - CANLI MOD AKTİF!)
+    if args.len() >= 3 && args[1] == "--load-model" {
+        let model_path = &args[2];
+        let config_path = model_path.replace(".safetensors", "_config.json");
+        
+        if Path::new(&config_path).exists() {
+            return run_with_pretrained_model(model_path, &config_path);
+        } else {
+            println!("⚠️ UYARI: Config dosyası bulunamadı.");
+            return Ok(());
+        }
+    }
     
-    // 0. Zaman damgası ve çıktı klasörü oluştur
+    // --- NORMAL EĞİTİM VE BAŞLATMA ---
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_GMT").to_string();
     let output_dir = format!("outputs/{}", timestamp);
-    std::fs::create_dir_all(&output_dir)?;
-    println!("📁 Çıktı klasörü / Output folder: {}\n", output_dir);
+    std::fs::create_dir_all(&output_dir).expect("Klasör oluşturulamadı");
+    println!("📁 Çıktılar: {}", output_dir);
     
-    // 1. Cihaz Seçimi
     let device = Device::Cpu;
-    println!("🖥️  Cihaz / Device: CPU");
+    println!("\n📊 Veri seti hazırlanıyor...");
+    let (distances, target, target_mean, target_std) = generate_training_data(15000, &device)?;
     
-    // 2. Eğitim Verisi Oluştur
-    println!("\n📊 Eğitim verisi oluşturuluyor / Generating training data...");
-    let n_samples = 3000;
-    let (distances, target, target_mean, target_std) = generate_training_data(n_samples, &device)?;
-    println!("   ✓ {} veri noktası oluşturuldu / data points generated", n_samples);
+    let (model, mut optimizer, varmap) = create_model_and_optimizer(&device, 0.01)?;
     
-    // 3. Model ve Optimizer Oluştur
-    println!("\n🧠 Model oluşturuluyor / Creating model...");
-    let (model, mut optimizer, _varmap) = create_model_and_optimizer(&device, 0.02)?;
-    println!("   ✓ 4 katmanlı sinir ağı / 4-layer neural network (3→128→64→32→1)");
+    let loss_history = train_model(&model, &mut optimizer, &distances, &target, target_mean, target_std, 5000, &device)?;
     
-    // 4. Eğitim
-    let epochs = 8000;
-    let loss_history = train_model(
-        &model,
-        &mut optimizer,
-        &distances,
-        &target,
-        target_mean,
-        target_std,
-        epochs,
-        &device,
-    )?;
+    let model_path = format!("{}/trained_model.safetensors", output_dir);
+    let config_path = format!("{}/trained_model_config.json", output_dir);
+    save_model_with_config(&varmap, &model_path, &config_path, target_mean, target_std)?;
     
-    // 5. Test
-    let (test_distances, cornell_values, nn_values, potential_points_theory, potential_points_nn) = 
-        test_model(&model, target_mean, target_std, &device)?;
+    // Testler ve Grafikler...
+    let (test_distances, cornell_values, nn_values, theory_pts, nn_pts) = test_model(&model, target_mean, target_std, &device)?;
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        plot_results(&output_dir, &loss_history, &test_distances, &cornell_values, &nn_values, &model, target_mean, target_std, &device)
+    }));
+
+    // Statik Simülasyon (Rapor için)
+    let sc_params = ScatteringParams::default();
+    let electrons = simulate_scattering(&model, &sc_params, target_mean, target_std, &device)?;
+    let scattering_file = format!("{}/scattering.svg", output_dir);
+    plot_scattering(&electrons, &scattering_file);
+
+    // GUI Verileri
+    let electron_data: Vec<gui::ElectronData> = electrons.iter().map(|e| gui::ElectronData {
+        trajectory: e.trajectory.clone(),
+        impact_parameter: e.impact_parameter,
+    }).collect();
+
+    let app_data = AppData {
+        loss_history,
+        potential_theory: theory_pts,
+        potential_nn: nn_pts,
+        test_distances,
+        cornell_values,
+        nn_values,
+        loss_file: "Generated".to_string(),
+        potential_file: "Generated".to_string(),
+        scattering_file: Some(scattering_file),
+        electrons: Some(electron_data),
+    };
+
+    app_data.save_session(&output_dir).unwrap();
     
-    // 6. Grafikleri Oluştur
-    println!("\n📈 Grafikler oluşturuluyor / Generating plots...");
-    let (loss_file, potential_file) = plot_results(
-        &output_dir,
-        &loss_history,
-        &test_distances,
-        &cornell_values,
-        &nn_values,
-        &model,
-        target_mean,
-        target_std,
-        &device,
-    );
+    // CANLI MOD İÇİN CONTEXT HAZIRLA
+    // Modeli Arc ile sarmalıyoruz ki GUI thread'i ile paylaşabilelim
+    let interactive_ctx = InteractiveContext {
+        model: Arc::new(model), // Modeli paylaşıma aç
+        device: device,
+        mean: target_mean,
+        std: target_std,
+        live_electrons: Vec::new(),
+        targets: get_proton_quarks(),
+    };
+
+    println!("✅ Simülasyon hazır! GUI açılıyor...");
+    launch_gui(app_data, "Cornell Laboratuvarı", Some(interactive_ctx));
+
+    Ok(())
+}
+
+fn run_with_pretrained_model(model_path: &str, config_path: &str) -> Result<()> {
+    println!("🚀 EĞİTİLMİŞ MODEL MODU");
+    let device = Device::Cpu;
     
-    // 7. Terminal Grafikleri Göster
-    show_terminal_plots(&loss_history, &test_distances, &cornell_values, &nn_values);
+    let timestamp = Utc::now().format("%Y%m%d_%H%M%S_LOADED").to_string();
+    let output_dir = format!("outputs/{}", timestamp);
+    std::fs::create_dir_all(&output_dir).expect("Klasör yok");
+
+    let (model, _varmap, target_mean, target_std) = load_model_with_config(model_path, config_path, &device)?;
     
-    // 7.5. Deep Inelastic Scattering Simülasyonu
-    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("🎯 DEEP INELASTIC SCATTERING SIMÜLASYONU BAŞLIYOR");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
-    let scattering_params = ScatteringParams::default();
-    let electrons = simulate_scattering(
-        &model,
-        &scattering_params,
-        target_mean,
-        target_std,
-        &device,
-    )?;
-    
-    // DIS grafiğini kaydet
+    // Test ve Statik Simülasyon
+    let (test_distances, cornell_values, nn_values, theory_pts, nn_pts) = test_model(&model, target_mean, target_std, &device)?;
+    let sc_params = ScatteringParams::default();
+    let electrons = simulate_scattering(&model, &sc_params, target_mean, target_std, &device)?;
     let scattering_file = format!("{}/scattering.svg", output_dir);
     plot_scattering(&electrons, &scattering_file);
     
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    
-    // 8. Oturum Verilerini Hazırla
-    // Elektron verilerini ElectronData formatına dönüştür
-    let electron_data: Vec<gui::ElectronData> = electrons.iter().map(|e| {
-        gui::ElectronData {
-            trajectory: e.trajectory.clone(),
-            impact_parameter: e.impact_parameter,
-        }
+    let electron_data: Vec<gui::ElectronData> = electrons.iter().map(|e| gui::ElectronData {
+        trajectory: e.trajectory.clone(),
+        impact_parameter: e.impact_parameter,
     }).collect();
-    
+
     let app_data = AppData {
-        loss_history: loss_history.clone(),
-        potential_theory: potential_points_theory,
-        potential_nn: potential_points_nn,
-        test_distances: test_distances.clone(),
-        cornell_values: cornell_values.clone(),
-        nn_values: nn_values.clone(),
-        loss_file: loss_file.clone(),
-        potential_file: potential_file.clone(),
-        scattering_file: Some(scattering_file.clone()),
+        loss_history: vec![],
+        potential_theory: theory_pts,
+        potential_nn: nn_pts,
+        test_distances,
+        cornell_values,
+        nn_values,
+        loss_file: "Loaded".to_string(),
+        potential_file: "Loaded".to_string(),
+        scattering_file: Some(scattering_file),
         electrons: Some(electron_data),
     };
     
-    // 9. Oturumu Kaydet
-    println!("\n💾 Oturum kaydediliyor / Saving session...");
-    match app_data.save_session(&output_dir) {
-        Ok(session_file) => {
-            println!("   ✓ {}", session_file);
-            println!("\n📝 Daha sonra açmak için / To load later:");
-            println!("   cargo run --release -- --load {}", session_file);
-        }
-        Err(e) => {
-            eprintln!("   ⚠️  Oturum kaydedilemedi / Session save failed: {}", e);
-        }
-    }
+    // CANLI MOD CONTEXT
+    let interactive_ctx = InteractiveContext {
+        model: Arc::new(model),
+        device,
+        mean: target_mean,
+        std: target_std,
+        live_electrons: Vec::new(),
+        targets: get_proton_quarks(),
+    };
     
-    // 10. GUI Başlat
-    println!("\n✅ Simülasyon tamamlandı / Simulation completed!");
-    println!("🖥️  İnteraktif GUI penceresi açılıyor / Opening interactive GUI...\n");
-    launch_gui(app_data, "Cornell Potansiyeli - Sinir Ağı Simülasyonu");
-
+    launch_gui(app_data, "Cornell Laboratuvarı (Eğitilmiş)", Some(interactive_ctx));
     Ok(())
 }

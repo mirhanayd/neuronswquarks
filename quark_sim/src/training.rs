@@ -1,10 +1,20 @@
 // Eğitim ve test fonksiyonları
 
 use candle_core::{Device, Result, Tensor, DType};
-use candle_nn::{Optimizer, VarMap, VarBuilder, optim::SGD};
+use candle_nn::{Optimizer, VarMap, VarBuilder, optim::AdamW};
+use serde::{Serialize, Deserialize}; // <-- Eksik olan bu
+use std::fs::File;                   // <-- Eksik olan bu
+use std::io::Write;                  // <-- Eksik olan bu
 
 use crate::model::QuarkModel;
 use crate::physics::cornell_potential;
+
+/// Model konfigürasyonu (Eğitim istatistiklerini saklamak için)
+#[derive(Serialize, Deserialize)]
+pub struct ModelConfig {
+    pub target_mean: f32,
+    pub target_std: f32,
+}
 
 /// Eğitim verisi oluştur
 pub fn generate_training_data(n_samples: usize, device: &Device) -> Result<(Tensor, Tensor, f32, f32)> {
@@ -42,7 +52,7 @@ pub fn generate_training_data(n_samples: usize, device: &Device) -> Result<(Tens
 /// Modeli eğit
 pub fn train_model(
     model: &QuarkModel,
-    optimizer: &mut SGD,
+    optimizer: &mut AdamW,
     distances: &Tensor,
     target: &Tensor,
     target_mean: f32,
@@ -155,11 +165,60 @@ pub fn test_model(
 }
 
 /// Model ve optimizer oluştur
-pub fn create_model_and_optimizer(device: &Device, learning_rate: f64) -> Result<(QuarkModel, SGD, VarMap)> {
+pub fn create_model_and_optimizer(device: &Device, learning_rate: f64) -> Result<(QuarkModel, AdamW, VarMap)> {
     let varmap = VarMap::new();
     let vs = VarBuilder::from_varmap(&varmap, DType::F32, device);
     let model = QuarkModel::new(vs.clone())?;
-    let optimizer = candle_nn::optim::SGD::new(varmap.all_vars(), learning_rate)?;
+    
+    // AdamW optimizer parametreleri
+    let params = candle_nn::optim::ParamsAdamW {
+        lr: learning_rate,
+        beta1: 0.9,
+        beta2: 0.999,
+        eps: 1e-8,
+        weight_decay: 0.01,
+    };
+    let optimizer = candle_nn::optim::AdamW::new(varmap.all_vars(), params)?;
     
     Ok((model, optimizer, varmap))
+}
+
+/// Modeli VE Konfigürasyonu kaydet
+pub fn save_model_with_config(varmap: &VarMap, model_path: &str, config_path: &str, mean: f32, std: f32) -> Result<()> {
+    println!("\n💾 Model ve Konfigürasyon kaydediliyor...");
+    
+    // 1. Ağırlıkları kaydet (.safetensors)
+    varmap.save(model_path)?;
+    println!("   ✓ Ağırlıklar: {}", model_path);
+
+    // 2. İstatistikleri kaydet (.json)
+    let config = ModelConfig { target_mean: mean, target_std: std };
+    // JSON oluştur
+    let json = serde_json::to_string_pretty(&config).map_err(candle_core::Error::wrap)?;
+    // Dosyaya yaz
+    let mut file = File::create(config_path).map_err(candle_core::Error::wrap)?;
+    file.write_all(json.as_bytes()).map_err(candle_core::Error::wrap)?;
+    
+    println!("   ✓ Konfigürasyon: {}", config_path);
+    Ok(())
+}
+
+/// Modeli VE Konfigürasyonu yükle
+pub fn load_model_with_config(model_path: &str, config_path: &str, device: &Device) -> Result<(QuarkModel, VarMap, f32, f32)> {
+    println!("\n📂 Model ve Konfigürasyon yükleniyor...");
+
+    // 1. Konfigürasyonu oku (Mean ve Std değerlerini geri getir)
+    let file = File::open(config_path).map_err(candle_core::Error::wrap)?;
+    let config: ModelConfig = serde_json::from_reader(file).map_err(candle_core::Error::wrap)?;
+    println!("   ✓ İstatistikler yüklendi: Mean={:.4}, Std={:.4}", config.target_mean, config.target_std);
+
+    // 2. Modeli yükle
+    let mut varmap = VarMap::new();
+    varmap.load(model_path)?;
+    let vs = VarBuilder::from_varmap(&varmap, DType::F32, device);
+    let model = QuarkModel::new(vs)?;
+    println!("   ✓ Ağırlıklar yüklendi: {}", model_path);
+
+    // Modeli ve ESKİ istatistikleri döndür
+    Ok((model, varmap, config.target_mean, config.target_std))
 }
