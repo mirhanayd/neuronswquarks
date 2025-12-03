@@ -18,4 +18,4 @@
 *.bak
 
 # Output dosyaları (isteğe bağlı - kaydedilmesini istiyorsanız kaldırın)
-# /outputs/
+/outputs/
