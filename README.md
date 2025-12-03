@@ -397,7 +397,7 @@ Bu proje açık kaynaklıdır ve eğitim amaçlı kullanıma açıktır.
 
 ## 👨‍💻 Author / Geliştirici
 
-**Mirhan Aydın**
+**Mirhan Aydınlı**
 
 GitHub: [@mirhanayd](https://github.com/mirhanayd)
 
