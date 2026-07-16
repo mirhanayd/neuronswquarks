@@ -1,421 +1,270 @@
-# 🔬 Cornell Potential Simulation with Deep Inelastic Scattering
-## Cornell Potansiyeli ve Derin İnelastik Saçılma Simülasyonu
+# LO Inclusive DIS and Legacy Cornell Visualization
 
-A neural network-based quantum chromodynamics (QCD) simulation that models quark-antiquark interactions using the Cornell potential and visualizes Deep Inelastic Scattering (DIS) with electron trajectories.
+This repository contains tested electron-proton DIS kinematics, a leading-order
+electromagnetic inclusive cross section using real LHAPDF grids, and the original
+Rust Cornell-potential neural-network desktop demonstration. The DIS and legacy
+visualization paths are deliberately separated.
 
-Kuark-antikuark etkileşimlerini Cornell potansiyeli ile modelleyen ve Deep Inelastic Scattering (DIS) elektron yörüngelerini görselleştiren sinir ağı tabanlı kuantum kromodinamik (QCD) simülasyonu.
+> **Scientific scope:** the cross section is fixed-α, LO photon exchange—not an
+> NLO/NNLO calculation or event generator. The Cornell application remains an
+> educational visualization.
 
----
+The active Rust crate is [`quark_sim`](quark_sim/). Run Cargo commands from that directory.
+The kinematics specification and independent fixture are in
+[`quark_sim/docs/dis_kinematics.md`](quark_sim/docs/dis_kinematics.md).
+Native setup and LO formulas are documented in
+[`quark_sim/docs/lhapdf_integration.md`](quark_sim/docs/lhapdf_integration.md) and
+[`quark_sim/docs/lo_dis_cross_section.md`](quark_sim/docs/lo_dis_cross_section.md).
 
-## 📋 Table of Contents / İçindekiler
+## Environment and build
 
-- [Features / Özellikler](#features--özellikler)
-- [Prerequisites / Ön Gereksinimler](#prerequisites--ön-gereksinimler)
-- [Installation / Kurulum](#installation--kurulum)
-- [Usage / Kullanım](#usage--kullanım)
-- [Project Structure / Proje Yapısı](#project-structure--proje-yapısı)
-- [Technical Details / Teknik Detaylar](#technical-details--teknik-detaylar)
-- [Author / Geliştirici](#author--geliştirici)
-
----
-
-## ✨ Features / Özellikler
-
-### English
-- **Cornell Potential Training**: 4-layer neural network learns the Cornell potential V(r) = -4αₛ/(3r) + kr
-- **Deep Inelastic Scattering**: Simulates 20 electrons scattering off a quark target
-- **Interactive GUI**: Real-time visualization with three panels:
-  - Training loss convergence
-  - Cornell potential comparison (Theory vs NN)
-  - Electron trajectories in DIS simulation
-- **Session Management**: Save/load simulation sessions as JSON
-- **Organized Outputs**: Timestamped folders for each run
-- **Bilingual**: Turkish and English output support
-
-### Türkçe
-- **Cornell Potansiyeli Eğitimi**: 4 katmanlı sinir ağı Cornell potansiyelini öğrenir V(r) = -4αₛ/(3r) + kr
-- **Derin İnelastik Saçılma**: 20 elektronun kuark hedefine saçılmasını simüle eder
-- **İnteraktif GUI**: Üç panelli gerçek zamanlı görselleştirme:
-  - Eğitim kaybı yakınsaması
-  - Cornell potansiyeli karşılaştırması (Teori vs NN)
-  - DIS simülasyonunda elektron yörüngeleri
-- **Oturum Yönetimi**: Simülasyon oturumlarını JSON olarak kaydet/yükle
-- **Düzenli Çıktılar**: Her çalıştırma için zaman damgalı klasörler
-- **İki Dilli**: Türkçe ve İngilizce çıktı desteği
-
----
-
-## 🔧 Prerequisites / Ön Gereksinimler
-
-### Step 1: Install Rust / Rust Kurulumu
-
-#### Windows
-
-1. **Download Rust Installer / Rust Yükleyiciyi İndirin**
-   - Visit / Ziyaret edin: https://rustup.rs/
-   - Download `rustup-init.exe` / İndirin: `rustup-init.exe`
-
-2. **Run the Installer / Yükleyiciyi Çalıştırın**
-   ```powershell
-   # Double-click rustup-init.exe or run in PowerShell:
-   # rustup-init.exe dosyasına çift tıklayın veya PowerShell'de çalıştırın:
-   .\rustup-init.exe
-   ```
-
-3. **Follow the Installation / Kurulumu Takip Edin**
-   - Press `1` for default installation / Varsayılan kurulum için `1` tuşlayın
-   - Wait for completion / Tamamlanmasını bekleyin
-
-4. **Verify Installation / Kurulumu Doğrulayın**
-   ```powershell
-   # Restart PowerShell, then check:
-   # PowerShell'i yeniden başlatın, ardından kontrol edin:
-   rustc --version
-   cargo --version
-   ```
-
-#### Linux / macOS
+The project is tested in WSL Ubuntu. From the repository root:
 
 ```bash
-# Install Rust / Rust Kur
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Restart terminal, then verify / Terminali yeniden başlat, sonra doğrula
+cd quark_sim
 rustc --version
 cargo --version
 ```
 
-### Step 2: Install Visual Studio Code / VS Code Kurulumu
-
-1. **Download VS Code / VS Code İndir**
-   - Visit / Ziyaret edin: https://code.visualstudio.com/
-   - Download and install / İndirin ve kurun
-
-2. **Install Rust Extension (Recommended) / Rust Eklentisi Kurun (Önerilen)**
-   - Open VS Code / VS Code'u açın
-   - Go to Extensions (`Ctrl+Shift+X`) / Eklentiler'e gidin (`Ctrl+Shift+X`)
-   - Search "rust-analyzer" / "rust-analyzer" arayın
-   - Click Install / Yükle'ye tıklayın
-
----
-
-## 📥 Installation / Kurulum
-
-### Clone the Repository / Depoyu Klonlayın
-
-```powershell
-# Windows PowerShell
-cd C:\Users\YourUsername\Documents
-git clone https://github.com/mirhanayd/neuronswquarks.git
-cd neuronswquarks\quark_sim
-```
+Install and activate the pinned user-local LHAPDF 6.5.6 plus CT18LO member 0:
 
 ```bash
-# Linux / macOS
-cd ~/Documents
-git clone https://github.com/mirhanayd/neuronswquarks.git
-cd neuronswquarks/quark_sim
+bash scripts/setup_lhapdf_wsl.sh
+source scripts/lhapdf_env.sh
 ```
 
-### Open in VS Code / VS Code'da Açın
-
-```powershell
-# Windows
-code .
-```
+CPU is the default and does not enable any Candle CUDA features:
 
 ```bash
-# Linux / macOS
-code .
-```
-
-Or manually / Veya manuel olarak:
-1. Open VS Code / VS Code'u açın
-2. `File > Open Folder` / `Dosya > Klasör Aç`
-3. Navigate to `quark_sim` folder / `quark_sim` klasörüne gidin
-
----
-
-## 🚀 Usage / Kullanım
-
-### Option 1: Run New Simulation / Yeni Simülasyon Çalıştır
-
-Open terminal in VS Code (`Ctrl+ö` or `Terminal > New Terminal`) and run:
-
-VS Code'da terminal açın (`Ctrl+ö` veya `Terminal > New Terminal`) ve çalıştırın:
-
-```powershell
-# Build and run in release mode (optimized, ~2-3 minutes)
-# Release modunda derle ve çalıştır (optimize, ~2-3 dakika)
 cargo run --release
 ```
 
-**What happens / Ne olur:**
-1. ✅ Creates timestamped output folder: `outputs/YYYYMMDD_HHMMSS_GMT/`
-2. ✅ Generates 3000 training samples
-3. ✅ Trains 4-layer neural network for 8000 epochs
-4. ✅ Tests Cornell potential predictions
-5. ✅ Simulates 20 electrons in DIS
-6. ✅ Saves 4 files:
-   - `training_loss.svg` - Training loss plot
-   - `cornell_potential.svg` - Potential comparison
-   - `scattering.svg` - Electron trajectories
-   - `session.json` - Session data
-7. ✅ Opens interactive GUI window
+CUDA support is opt-in at compile time:
 
-**Output Example / Çıktı Örneği:**
-```
-🚀 Cornell Potansiyeli Simülasyonu / Cornell Potential Simulation
-📁 Çıktı klasörü / Output folder: outputs/20251203_143052_GMT
-
-🖥️  Cihaz / Device: CPU
-📊 Eğitim verisi oluşturuluyor / Generating training data...
-   ✓ 3000 veri noktası oluşturuldu / data points generated
-
-🎓 Eğitim başlıyor / Starting training...
-   • Epoch sayısı / Epochs: 8000
-   • Öğrenme oranı / Learning rate: 0.0200
-
-Epoch 0: Kayıp / Loss (MSE) = 12.084 GeV²
-Epoch 7500: Kayıp / Loss (MSE) = 0.016 GeV²
-
-✅ Eğitim tamamlandı / Training completed!
-
-⚛️ Deep Inelastic Scattering Simülasyonu / DIS Simulation
-   ✓ Saçılma simülasyonu tamamlandı
-   📊 Geniş açı (>10°): 18 elektron
-       Küçük açı (<10°): 2 elektron
-
-💾 Oturum kaydediliyor / Saving session...
-   ✓ outputs/20251203_143052_GMT/session.json
+```bash
+cargo run --release --features cuda
 ```
 
----
+The CUDA build requires a working CUDA toolkit, driver, and supported GPU. When compiled with `cuda`, the program uses CUDA device 0 if Candle detects it and otherwise reports a fallback to CPU. A successful CPU build does not prove that CUDA works.
 
-### Option 2: Load Previous Session / Önceki Oturumu Yükle
+## CLI
 
-If you want to reload a previous simulation without retraining:
-
-Yeniden eğitim yapmadan önceki bir simülasyonu yüklemek istiyorsanız:
-
-```powershell
-# Load specific session / Belirli oturumu yükle
-cargo run --release -- --load outputs/20251203_143052_GMT/session.json
+```text
+quark_sim
+quark_sim --load <session.json>
+quark_sim --load-model <model.safetensors>
+quark_sim dis-kinematics [OPTIONS]
+quark_sim dis-cross-section [OPTIONS]
+quark_sim -h
+quark_sim --help
 ```
 
-**What happens / Ne olur:**
-1. ✅ Loads saved neural network predictions
-2. ✅ Loads electron trajectories
-3. ✅ Opens GUI immediately (no training)
-4. ✅ ~5 seconds total
+- No arguments: train a new model, create outputs, run the path visualization, save a session, and open the GUI.
+- `--load`: load saved arrays and paths for static viewing. It does not load a model or resume a simulation.
+- `--load-model`: load weights and the required sibling `<model>_config.json`, generate fresh plots and paths, save a new session, and open the interactive GUI.
+- `dis-kinematics`: calculate massive-beam `s`, `Q²`, `x`, `y`, and `W²`
+  without initializing Candle or the GUI.
+- `dis-cross-section`: query a selected installed PDF set/member and print
+  `x f_i`, LO `F₂`, `y`, and `d²σ/(dx dQ²)` in GeV⁻⁴ and pb/GeV².
+- `--help` / `-h`: print help without training or launching the GUI.
+- Unknown arguments, extra arguments, and missing file operands are rejected instead of starting training.
 
-**When to use / Ne zaman kullanılır:**
-- Want to review previous results / Önceki sonuçları gözden geçirmek istiyorsanız
-- Need to compare different runs / Farklı çalıştırmaları karşılaştırmak istiyorsanız
-- Presenting results quickly / Sonuçları hızlıca sunmak istiyorsanız
+Examples:
 
----
-
-### Alternative: Quick Debug Build / Alternatif: Hızlı Debug Derleme
-
-```powershell
-# Faster compilation, slower execution (~5-6 minutes for training)
-# Daha hızlı derleme, daha yavaş çalışma (~5-6 dakika eğitim)
-cargo run
+```bash
+cargo run --release -- --help
+cargo run --release -- dis-kinematics --help
+cargo run --release -- dis-kinematics --electron-energy 27.5 --proton-energy 920.0 --scattered-electron-energy 15.0 --theta-deg 20.0
+cargo run --release -- dis-cross-section --x 0.01 --q2 100.0 --electron-energy 27.5 --proton-energy 920.0 --pdf-set CT18LO --pdf-member 0
+cargo run --release -- --load outputs/20251203_123953_GMT/session.json
+cargo run --release -- --load-model outputs/20251203_123953_GMT/trained_model.safetensors
 ```
 
----
+## Current defaults
 
-## 📂 Project Structure / Proje Yapısı
+These values come from the active source files, not from historical output folders:
 
+| Setting | Current value |
+| --- | ---: |
+| Training samples | 15,000 |
+| Training radius | 0.05 to 3.0 fm |
+| Epochs | 5,000 (full-batch) |
+| Optimizer | AdamW |
+| Learning rate | 0.01 |
+| Weight decay | 0.01 |
+| Network | `3 -> 256 -> 128 -> 64 -> 1` |
+| Activations | ReLU after the first three linear layers |
+| Static electron count | 30 |
+| Impact-parameter range | -2.5 to +2.5 |
+| Initial velocity | 0.5 |
+| Integration time step | 0.05 |
+| Maximum steps | 400 |
+| Force scale | 0.2 |
+
+Training is random and currently has no configurable seed, so two runs are not exactly reproducible.
+
+## Outputs
+
+A normal run creates `outputs/YYYYMMDD_HHMMSS_GMT/` with:
+
+```text
+trained_model.safetensors
+trained_model_config.json
+training_loss.svg
+cornell_potential.svg
+scattering.svg
+session.json
 ```
+
+`trained_model_config.json` stores the target mean and standard deviation required to denormalize predictions. A legacy weight file without this companion file cannot be loaded through `--load-model`.
+
+A model-loaded run creates an `outputs/YYYYMMDD_HHMMSS_LOADED/` directory containing:
+
+```text
+training_loss.svg       # labelled placeholder: no training occurred in this run
+cornell_potential.svg
+scattering.svg
+session.json
+```
+
+Existing output directories are accepted and files may be replaced. Because directory names have one-second resolution, two runs started in the same second can target the same directory. Historical outputs are retained by the repository and are not rewritten during normal validation.
+
+## GUI behavior
+
+The GUI contains:
+
+- a central proton/electron plot;
+- a training-loss plot or a clear “no training data” message;
+- theoretical and neural Cornell-potential curves with optional test points.
+
+In live mode, clicking empty plot space creates an electron and clicking a target quark flips its displayed spin. In session-view mode, saved electron trajectories are drawn as static polylines.
+
+## Session format and limitations
+
+`session.json` saves:
+
+- training-loss history;
+- theoretical and neural potential points;
+- test distances, Cornell values, and neural predictions;
+- output-path strings for the generated SVG files;
+- optional electron trajectories and impact parameters.
+
+Loading restores those serialized arrays. Missing optional `scattering_file` or `electrons` fields default to `None`, which preserves compatibility with older sessions.
+
+Session loading does **not**:
+
+- animate or replay electron trajectories;
+- restore the neural model, optimizer, or model normalization values;
+- restore CPU/CUDA device state;
+- restore RNG state or a seed;
+- restore training/scattering parameters, target-spin edits, or electrons created in the GUI;
+- resume training or simulation;
+- read and display the saved SVG files (the GUI redraws from JSON arrays).
+
+Sessions are written before the interactive GUI opens, so later GUI interactions are not persisted. The file format has no explicit schema version.
+
+## Project structure
+
+```text
 quark_sim/
-├── src/
-│   ├── main.rs          # Main orchestration / Ana orkestrasyon
-│   ├── physics.rs       # Cornell potential formula / Cornell potansiyel formülü
-│   ├── model.rs         # Neural network architecture / Sinir ağı mimarisi
-│   ├── training.rs      # Training & testing logic / Eğitim & test mantığı
-│   ├── plotting.rs      # SVG & terminal plots / SVG & terminal grafikleri
-│   ├── gui.rs           # Interactive GUI with egui / Etkileşimli GUI
-│   └── scattering.rs    # DIS simulation / DIS simülasyonu
-├── outputs/             # Timestamped result folders / Zaman damgalı sonuç klasörleri
-│   └── YYYYMMDD_HHMMSS_GMT/
-│       ├── training_loss.svg
-│       ├── cornell_potential.svg
-│       ├── scattering.svg
-│       └── session.json
-├── Cargo.toml           # Rust dependencies / Rust bağımlılıkları
-└── README.md
+├── Cargo.toml
+├── Cargo.lock
+├── compare_runs.py
+├── docs/
+│   ├── dis_kinematics.md
+│   ├── lhapdf_integration.md
+│   └── lo_dis_cross_section.md
+├── scripts/
+│   ├── setup_lhapdf_wsl.sh  # pinned, user-local LHAPDF + CT18LO setup
+│   └── lhapdf_env.sh        # WSL environment activation
+├── tests/
+│   ├── dis_cli.rs
+│   ├── dis_kinematics.rs
+│   └── lhapdf_integration.rs # ignored native-backend regressions
+├── outputs/                 # historical and newly generated runs
+└── src/
+    ├── lib.rs               # reusable library surface
+    ├── main.rs              # CLI and orchestration
+    ├── model.rs             # 4-linear-layer Candle model
+    ├── training.rs          # data, training, save/load, regression test
+    ├── physics/
+    │   ├── constants.rs
+    │   ├── four_vector.rs
+    │   ├── dis_kinematics.rs
+    │   ├── pdf.rs
+    │   ├── structure_functions.rs
+    │   ├── cross_section.rs
+    │   └── legacy_cornell.rs
+    ├── scattering.rs        # educational path integration and SVG
+    ├── plotting.rs          # loss and potential SVG generation
+    └── gui.rs               # live/static desktop visualization and sessions
 ```
 
----
+`src/main.rs.backup`, the `Yeni klasör` backup directory/archive, and historical
+output files are not active Rust sources. `compare_runs.py` is a historical,
+hard-coded comparison helper rather than a general CLI tool.
 
-## 🔬 Technical Details / Teknik Detaylar
+## Locked dependency baseline
 
-### Physics / Fizik
+The repaired manifest follows the existing lockfile baseline:
 
-**Cornell Potential / Cornell Potansiyeli:**
-```
-V(r) = -4αₛ/(3r) + kr
+- Candle Core / Candle NN 0.8.4
+- eframe / egui / egui_plot 0.26.2
+- Plotters 0.3.7
+- rand 0.8.x
+- Serde 1.0.x
+- managed-lhapdf 0.4.2, using its `cxx` bridge to native LHAPDF 6.5.6
+- CT18LO data version 1, member 0, for the pinned external regression
 
-where / burada:
-- αₛ = 0.5 (strong coupling constant / güçlü etkileşim sabiti)
-- k = 0.9 GeV/fm (string tension / sicim gerilimi)
-- r: quark-antiquark distance / kuark-antikuark mesafesi
-```
+LHAPDF is a native, unconditional dependency, so activate
+`scripts/lhapdf_env.sh` before Cargo builds. Candle CUDA is forwarded only
+through the crate's optional `cuda` feature.
 
-**Deep Inelastic Scattering:**
-- 20 electrons fired at quark target / 20 elektron kuark hedefine fırlatılır
-- Force calculation: F = -∇V / Kuvvet hesabı: F = -∇V
-- Trajectory integration with dt = 0.05 fm/c
-- Impact parameter range: ±2.0 fm
+## Scientific limitations
 
-### Neural Network / Sinir Ağı
+The analytic function used by the demo is:
 
-```
-Architecture / Mimari: 3 → 128 → 64 → 32 → 1
-Activation / Aktivasyon: ReLU
-Optimizer / Optimize edici: SGD (Stochastic Gradient Descent)
-Learning Rate / Öğrenme Oranı: 0.02
-Epochs / Dönem: 8000
-Training Samples / Eğitim Örnekleri: 3000
+```text
+V(r) = -4 alpha_s / (3 r) + k r
+alpha_s = 0.5
+k = 0.9
 ```
 
-### Dependencies / Bağımlılıklar
+Important limitations include:
 
-- **candle-core** (0.9.1): ML framework / ML çerçevesi
-- **eframe** (0.29): GUI framework / GUI çerçevesi
-- **plotters** (0.3): SVG plotting / SVG grafik
-- **serde** (1.0): JSON serialization / JSON serileştirme
-- **chrono** (0.4): Timestamps / Zaman damgaları
+- The network learns values generated by this analytic function; it is not trained on experimental or lattice-QCD data.
+- The Cornell potential describes a static quark-antiquark model. Applying it to electron trajectories is not a physical DIS calculation.
+- The separate DIS path computes relativistic kinematics, reads real LHAPDF
+  grids, evaluates LO electromagnetic `F₂`, and reports an inclusive
+  differential cross section. It is not connected to the Cornell trajectory
+  visualization.
+- The DIS result is fixed-α, leading-order single-photon exchange. It has no
+  nonzero `F_L`, `xF₃`, weak exchange, higher-order coefficient functions, PDF
+  uncertainty propagation, scale variation, or radiative corrections.
+- There is no phase-space integration, hadronization, detector response, or
+  generated inelastic final state.
+- Target quarks are fixed 2D points. Their displayed spin force is ad hoc and is not derived from QCD or QED.
+- The motion is a simple finite-difference, unitless-looking integration. It has no electron mass or charge model.
+- `HBARC` is declared but not used in the current Cornell expression, so the source's `fm` and `GeV` labels should not be interpreted as a dimensionally complete calculation.
+- Rotational symmetry is sampled/learned rather than enforced by the network architecture.
+- Static SVG axes can clip trajectories that continue beyond the plotted range.
 
----
+The appropriate next physics phase is an independently benchmarked higher-order
+structure-function backend (for example APFEL++) with scale and PDF uncertainty
+handling, still kept separate from the legacy Cornell model.
 
-## 🎨 GUI Features / GUI Özellikleri
+## Validation
 
-The interactive window shows / İnteraktif pencere gösterir:
-
-1. **Training Loss Panel / Eğitim Kaybı Paneli**
-   - MSE loss over epochs / Epoch'lara göre MSE kaybı
-   - Toggle visibility / Görünürlüğü aç/kapa
-
-2. **Cornell Potential Panel / Cornell Potansiyel Paneli**
-   - Theoretical curve (blue) / Teorik eğri (mavi)
-   - Neural network prediction (red) / Sinir ağı tahmini (kırmızı)
-   - Test points (green) / Test noktaları (yeşil)
-
-3. **DIS Scattering Panel / DIS Saçılma Paneli**
-   - 20 electron trajectories (colored) / 20 elektron yörüngesi (renkli)
-   - Quark target (red dot) / Kuark hedefi (kırmızı nokta)
-   - Statistics: large/small angle scattering / İstatistikler: geniş/küçük açı saçılma
-
----
-
-## 📊 Expected Results / Beklenen Sonuçlar
-
-### Training / Eğitim
-- Initial loss / İlk kayıp: ~9-12 GeV²
-- Final loss / Son kayıp: ~0.01-0.03 GeV²
-- Convergence time / Yakınsama süresi: ~2-3 minutes (release mode)
-
-### Cornell Potential Accuracy / Cornell Potansiyel Doğruluğu
-- Mid-range distances (0.2-2.0 fm): 2-7% error
-- Extreme distances: Higher error (expected)
-
-### DIS Statistics / DIS İstatistikleri
-- Large angle (>10°): ~15-18 electrons
-- Small angle (<10°): ~2-5 electrons
-
----
-
-## 🛠️ Troubleshooting / Sorun Giderme
-
-### Compilation Errors / Derleme Hataları
-
-**Problem:** `rustc` not found
-**Solution / Çözüm:**
-```powershell
-# Restart terminal after Rust installation
-# Rust kurulumundan sonra terminali yeniden başlat
-rustup update
+```bash
+source scripts/lhapdf_env.sh
+cargo fmt --all -- --check
+cargo check
+cargo clippy --all-targets -- -D warnings
+cargo test
+cargo test --test lhapdf_integration -- --ignored
+cargo run --release -- --help
+cargo run --release -- dis-kinematics --help
+cargo run --release -- dis-cross-section --help
 ```
 
-**Problem:** Linker errors on Windows
-**Solution / Çözüm:**
-- Install Visual Studio C++ Build Tools
-- https://visualstudio.microsoft.com/downloads/
-
-### Runtime Issues / Çalışma Zamanı Sorunları
-
-**Problem:** GUI doesn't open
-**Solution / Çözüm:**
-- Check graphics drivers / Grafik sürücülerini kontrol edin
-- Try debug mode: `cargo run` / Debug modu deneyin: `cargo run`
-
-**Problem:** Training takes too long
-**Solution / Çözüm:**
-- Use release mode: `cargo run --release`
-- Release modu kullanın: `cargo run --release`
-
----
-
-## 📝 Example Commands / Örnek Komutlar
-
-```powershell
-# Full workflow / Tam iş akışı
-cargo run --release                                          # New simulation / Yeni simülasyon
-cargo run --release -- --load outputs/20251203_143052_GMT/session.json  # Load session / Oturum yükle
-
-# Development / Geliştirme
-cargo build                                                  # Build only / Sadece derle
-cargo check                                                  # Quick syntax check / Hızlı sözdizimi kontrolü
-cargo clean                                                  # Clean build artifacts / Derleme dosyalarını temizle
-cargo fmt                                                    # Format code / Kodu biçimlendir
-```
-
----
-
-## 🌟 Contributing / Katkıda Bulunma
-
-Contributions are welcome! / Katkılar hoş karşılanır!
-
-1. Fork the repository / Depoyu fork edin
-2. Create feature branch / Özellik dalı oluşturun: `git checkout -b feature-name`
-3. Commit changes / Değişiklikleri commit edin: `git commit -m "Add feature"`
-4. Push to branch / Dala push edin: `git push origin feature-name`
-5. Open Pull Request / Pull Request açın
-
----
-
-## 📄 License / Lisans
-
-This project is open source and available for educational purposes.
-
-Bu proje açık kaynaklıdır ve eğitim amaçlı kullanıma açıktır.
-
----
-
-## 👨‍💻 Author / Geliştirici
-
-**Mirhan Aydınlı**
-
-GitHub: [@mirhanayd](https://github.com/mirhanayd)
-
----
-
-## 🙏 Acknowledgments / Teşekkürler
-
-- Cornell potential model from QCD theory / QCD teorisinden Cornell potansiyel modeli
-- Candle ML framework by Hugging Face / Hugging Face'ten Candle ML çerçevesi
-- Deep Inelastic Scattering physics / Derin İnelastik Saçılma fiziği
-
----
-
-**⚡ Quick Start / Hızlı Başlangıç:**
-```powershell
-git clone https://github.com/mirhanayd/neuronswquarks.git
-cd neuronswquarks/quark_sim
-cargo run --release
-```
-
-**Enjoy simulating quantum physics! / Kuantum fiziği simülasyonunun tadını çıkarın! 🔬✨**
+The test suite includes a CPU save/load regression: it initializes and saves a model, loads the parameters into a separately instantiated architecture, and requires matching predictions within `1e-6`.
