@@ -12,6 +12,12 @@ use super::state::{
 };
 use super::worker::{self, WorkerHandle, WorkerMessage};
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum EventGenView {
+    Visualized,
+    Raw,
+}
+
 /// State for the event generation page.
 pub struct EventGenPageState {
     pub process: BackendProcess,
@@ -19,6 +25,7 @@ pub struct EventGenPageState {
     pub summary: Option<EventGenSummary>,
     pub accepted_count: usize,
     pub failed_count: usize,
+    pub view_mode: EventGenView,
 }
 
 impl Default for EventGenPageState {
@@ -29,6 +36,7 @@ impl Default for EventGenPageState {
             summary: None,
             accepted_count: 0,
             failed_count: 0,
+            view_mode: EventGenView::Visualized,
         }
     }
 }
@@ -156,8 +164,17 @@ pub fn render_event_gen_page(
     // Summary
     if let Some(ref summary) = state.summary {
         ui.separator();
-        ui.heading("Summary");
-        egui::Grid::new("event_gen_summary_grid")
+        ui.horizontal(|ui| {
+            ui.heading("Summary");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.selectable_value(&mut state.view_mode, EventGenView::Raw, "📄 Raw JSON");
+                ui.selectable_value(&mut state.view_mode, EventGenView::Visualized, "📊 Visualized Data");
+            });
+        });
+
+        match state.view_mode {
+            EventGenView::Visualized => {
+                egui::Grid::new("event_gen_summary_grid")
             .num_columns(2)
             .striped(true)
             .show(ui, |ui| {
@@ -183,6 +200,21 @@ pub fn render_event_gen_page(
                     ui.end_row();
                 }
             });
+            }
+            EventGenView::Raw => {
+                egui::ScrollArea::vertical()
+                    .max_height(400.0)
+                    .show(ui, |ui| {
+                        let json = serde_json::to_string_pretty(&summary).unwrap_or_else(|_| "Failed to serialize JSON".to_string());
+                        ui.add(
+                            egui::TextEdit::multiline(&mut json.as_str())
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(f32::INFINITY)
+                                .interactive(false),
+                        );
+                    });
+            }
+        }
     }
 
     // Logs
