@@ -12,6 +12,7 @@ pub mod dis_run_history_page;
 pub mod dis_validation_page;
 pub mod legacy_cornell;
 pub mod state;
+pub mod theme;
 pub mod worker;
 
 #[cfg(test)]
@@ -27,6 +28,7 @@ use dis_run_history_page::{render_run_history_page, RunHistoryPageState};
 use dis_validation_page::{render_validation_page, ValidationPageState};
 use legacy_cornell::{render_cornell_page, AppData, CornellPageState, InteractiveContext};
 use state::{DisConfig, DisPage, ErrorState, GuiError, TopLevelMode, UiState};
+use theme::apply_theme;
 
 // Re-export types needed by main.rs
 pub use legacy_cornell::{AppData as LegacyAppData, InteractiveContext as LegacyInteractiveContext};
@@ -237,7 +239,10 @@ pub fn launch_gui(
     eframe::run_native(
         title,
         native_options,
-        Box::new(move |_cc| Box::new(SimulationApp::new(app_data, interactive))),
+        Box::new(move |cc| {
+            theme::apply_theme(&cc.egui_ctx);
+            Box::new(SimulationApp::new(app_data, interactive))
+        }),
     )
     .map_err(|error| candle_core::Error::Msg(format!("GUI error: {error}")))
 }
@@ -254,7 +259,10 @@ pub fn launch_dis_gui(title: &str) -> candle_core::Result<()> {
     eframe::run_native(
         title,
         native_options,
-        Box::new(move |_cc| Box::new(SimulationApp::new_dis_mode())),
+        Box::new(move |cc| {
+            theme::apply_theme(&cc.egui_ctx);
+            Box::new(SimulationApp::new_dis_mode())
+        }),
     )
     .map_err(|error| candle_core::Error::Msg(format!("GUI error: {error}")))
 }

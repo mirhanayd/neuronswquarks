@@ -7,7 +7,16 @@ use eframe::egui;
 use std::fs;
 use std::path::Path;
 
+use egui_plot::{BarChart, Bar, Legend, Plot, Points, PlotPoints};
+
 use super::state::{ComparisonPoint, GuiError, GuiErrorCategory, ValidationSummary};
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum ValidationView {
+    Visualized,
+    Raw,
+    Plot,
+}
 
 /// State for the data validation page.
 pub struct ValidationPageState {
@@ -18,6 +27,7 @@ pub struct ValidationPageState {
     pub dataset_name: String,
     pub show_uncertainties: bool,
     pub sort_by_q2: bool,
+    pub view_mode: ValidationView,
 }
 
 impl Default for ValidationPageState {
@@ -30,6 +40,7 @@ impl Default for ValidationPageState {
             dataset_name: String::new(),
             show_uncertainties: true,
             sort_by_q2: true,
+            view_mode: ValidationView::Visualized,
         }
     }
 }
@@ -131,9 +142,18 @@ pub fn render_validation_page(
     // Comparison table
     if !state.comparison_points.is_empty() {
         ui.separator();
-        ui.heading("Data vs Theory");
+        ui.horizontal(|ui| {
+            ui.heading("Data vs Theory");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.selectable_value(&mut state.view_mode, ValidationView::Plot, "📈 Plot");
+                ui.selectable_value(&mut state.view_mode, ValidationView::Raw, "📄 Raw JSON");
+                ui.selectable_value(&mut state.view_mode, ValidationView::Visualized, "📊 Visualized Table");
+            });
+        });
 
-        let mut points = state.comparison_points.clone();
+        match state.view_mode {
+            ValidationView::Visualized => {
+                let mut points = state.comparison_points.clone();
         if state.sort_by_q2 {
             points.sort_by(|a, b| a.q2.partial_cmp(&b.q2).unwrap_or(std::cmp::Ordering::Equal));
         }
@@ -196,6 +216,55 @@ pub fn render_validation_page(
                         }
                     });
             });
+            }
+            ValidationView::Raw => {
+                egui::ScrollArea::vertical()
+                    .max_height(400.0)
+                    .show(ui, |ui| {
+                        let json = serde_json::to_string_pretty(&state.comparison_points).unwrap_or_else(|_| "Failed to serialize JSON".to_string());
+                        ui.add(
+                            egui::TextEdit::multiline(&mut json.as_str())
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(f32::INFINITY)
+                                .interactive(false),
+                        );
+                    });
+            }
+            ValidationView::Plot => {
+                ui.add_space(8.0);
+                
+                let mut points_data: Vec<[f64; 2]> = Vec::new();
+                for (i, p) in state.comparison_points.iter().enumerate() {
+                    // Use index for X-axis if not sorting by Q2, otherwise use Q2
+                    let x_val = if state.sort_by_q2 { p.q2 } else { i as f64 };
+                    points_data.push([x_val, p.pull]);
+                }
+                
+                let scatter = Points::new(PlotPoints::new(points_data))
+                    .name("Pull (σ)")
+                    .radius(4.0)
+                    .color(egui::Color32::from_rgb(100, 150, 255));
+                
+                Plot::new("validation_pull_plot")
+                    .view_aspect(2.5)
+                    .legend(Legend::default())
+                    .x_axis_formatter(move |mark, _max_chars, _range| {
+                        format!("{:.1}", mark.value)
+                    })
+                    .y_axis_formatter(|mark, _max_chars, _range| format!("{:.1} σ", mark.value))
+                    .label_formatter(move |name, value| {
+                        format!("{}: y={:.2} σ, x={:.1}", name, value.y, value.x)
+                    })
+                    .show(ui, |plot_ui| {
+                        plot_ui.hline(egui_plot::HLine::new(0.0).color(egui::Color32::GRAY));
+                        plot_ui.hline(egui_plot::HLine::new(1.0).color(egui::Color32::DARK_GREEN).style(egui_plot::LineStyle::Dashed { length: 5.0 }));
+                        plot_ui.hline(egui_plot::HLine::new(-1.0).color(egui::Color32::DARK_GREEN).style(egui_plot::LineStyle::Dashed { length: 5.0 }));
+                        plot_ui.hline(egui_plot::HLine::new(3.0).color(egui::Color32::RED).style(egui_plot::LineStyle::Dashed { length: 5.0 }));
+                        plot_ui.hline(egui_plot::HLine::new(-3.0).color(egui::Color32::RED).style(egui_plot::LineStyle::Dashed { length: 5.0 }));
+                        plot_ui.points(scatter);
+                    });
+            }
+        }
     }
 }
 

@@ -166,6 +166,7 @@ Defaults:
 
 #[derive(Debug, PartialEq)]
 enum Command {
+    LaunchGui,
     Train,
     LoadSession(PathBuf),
     LoadModel(PathBuf),
@@ -204,6 +205,7 @@ struct GenerateDisEventsCliArgs {
     y_min: f64,
     y_max: f64,
     number_of_events: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
     random_seed: Option<i32>,
     pdf_set: String,
     pdf_member: i32,
@@ -286,6 +288,7 @@ fn main() -> Result<()> {
     })?;
 
     match command {
+        Command::LaunchGui => gui::launch_dis_gui("QuarkSim"),
         Command::Train => run_training(),
         Command::LoadSession(session_file) => {
             let app_data = AppData::load_session(&session_file).map_err(Error::wrap)?;
@@ -342,7 +345,7 @@ fn main() -> Result<()> {
 fn parse_command(args: impl IntoIterator<Item = String>) -> std::result::Result<Command, String> {
     let args: Vec<String> = args.into_iter().collect();
     match args.as_slice() {
-        [] => Ok(Command::Train),
+        [] => Ok(Command::LaunchGui),
         [flag] if flag == "-h" || flag == "--help" => Ok(Command::Help),
         [subcommand, remaining @ ..] if subcommand == "dis-kinematics" => {
             parse_dis_command(remaining).map(Command::DisKinematics)
@@ -1391,9 +1394,16 @@ fn run_structure_functions(args: StructureFunctionsCliArgs) -> Result<()> {
         other => return Err(Error::Msg(format!("Unsupported backend: {other}"))),
     }.map_err(|e| Error::Msg(e.to_string()))?;
 
-    let json = serde_json::to_string(&result).map_err(|e| Error::Msg(e.to_string()))?;
-    println!("{}", json);
+    // Enrich with reproducibility metadata
+    let mut enriched_result = result;
+    enriched_result.metadata.os_arch = option_env!("OS_ARCH").map(String::from);
+    enriched_result.metadata.rust_version = option_env!("RUSTC_VERSION").map(String::from);
+    enriched_result.metadata.git_commit = option_env!("GIT_HASH").map(String::from);
+    if let Some(dirty_str) = option_env!("GIT_DIRTY") {
+        enriched_result.metadata.git_dirty = Some(dirty_str == "true");
+    }
 
+    println!("{}", serde_json::to_string(&enriched_result).unwrap());
     Ok(())
 }
 

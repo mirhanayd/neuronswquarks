@@ -8,7 +8,16 @@ use eframe::egui;
 use std::fs;
 use std::path::Path;
 
+use egui_plot::{Bar, BarChart, Legend, Plot};
+
 use super::state::{GuiError, GuiErrorCategory, HepMC3Event, HepMC3Particle, HepMC3Vertex};
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum EventView {
+    Visualized,
+    Raw,
+    Plot,
+}
 
 /// State for the event viewer page.
 pub struct EventViewerPageState {
@@ -18,6 +27,7 @@ pub struct EventViewerPageState {
     pub show_final_state_only: bool,
     pub pdg_filter: String,
     pub loaded: bool,
+    pub view_mode: EventView,
 }
 
 impl Default for EventViewerPageState {
@@ -29,6 +39,7 @@ impl Default for EventViewerPageState {
             show_final_state_only: false,
             pdg_filter: String::new(),
             loaded: false,
+            view_mode: EventView::Visualized,
         }
     }
 }
@@ -128,78 +139,102 @@ pub fn render_event_viewer_page(
         event.particles.len()
     ));
 
-    egui::ScrollArea::vertical()
-        .max_height(400.0)
-        .show(ui, |ui| {
-            egui::Grid::new("particle_grid")
-                .num_columns(9)
-                .striped(true)
-                .show(ui, |ui| {
-                    // Header
-                    ui.strong("#");
-                    ui.strong("PDG ID");
-                    ui.strong("Name");
-                    ui.strong("Status");
-                    ui.strong("px [GeV]");
-                    ui.strong("py [GeV]");
-                    ui.strong("pz [GeV]");
-                    ui.strong("E [GeV]");
-                    ui.strong("Mass [GeV]");
-                    ui.end_row();
-
-                    for p in &filtered_particles {
-                        ui.label(format!("{}", p.index));
-                        ui.label(format!("{}", p.pdg_id));
-                        ui.label(pdg_id_name(p.pdg_id));
-                        ui.label(format!("{}", p.status));
-                        ui.label(format!("{:.4}", p.px));
-                        ui.label(format!("{:.4}", p.py));
-                        ui.label(format!("{:.4}", p.pz));
-                        ui.label(format!("{:.4}", p.energy));
-                        ui.label(format!("{:.4}", p.mass));
-                        ui.end_row();
-                    }
-                });
+    ui.horizontal(|ui| {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.selectable_value(&mut state.view_mode, EventView::Plot, "📈 Plot");
+            ui.selectable_value(&mut state.view_mode, EventView::Raw, "📄 Raw JSON");
+            ui.selectable_value(&mut state.view_mode, EventView::Visualized, "📊 Visualized Table");
         });
+    });
 
-    // Vertex information
-    if !event.vertices.is_empty() {
-        ui.separator();
-        ui.collapsing("🔗 Vertices", |ui| {
-            egui::Grid::new("vertex_grid")
-                .num_columns(5)
-                .striped(true)
+    match state.view_mode {
+        EventView::Visualized => {
+            egui::ScrollArea::vertical()
+                .max_height(350.0)
                 .show(ui, |ui| {
-                    ui.strong("ID");
-                    ui.strong("Position (x,y,z,t)");
-                    ui.strong("Incoming");
-                    ui.strong("Outgoing");
-                    ui.strong("Type");
-                    ui.end_row();
+                    egui::Grid::new("particle_grid")
+                        .num_columns(9)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            // Header
+                            ui.strong("#");
+                            ui.strong("PDG ID");
+                            ui.strong("Name");
+                            ui.strong("Status");
+                            ui.strong("px [GeV]");
+                            ui.strong("py [GeV]");
+                            ui.strong("pz [GeV]");
+                            ui.strong("E [GeV]");
+                            ui.strong("Mass [GeV]");
+                            ui.end_row();
 
-                    for v in &event.vertices {
-                        ui.label(format!("{}", v.id));
-                        ui.label(format!(
-                            "({:.2}, {:.2}, {:.2}, {:.2})",
-                            v.x, v.y, v.z, v.t
-                        ));
-                        ui.label(format!("{:?}", v.incoming));
-                        ui.label(format!("{:?}", v.outgoing));
-                        let vtype = if v.incoming.is_empty() {
-                            "Initial"
-                        } else {
-                            "Interaction"
-                        };
-                        ui.label(vtype);
-                        ui.end_row();
-                    }
+                            for p in &filtered_particles {
+                                ui.label(format!("{}", p.index));
+                                ui.label(format!("{}", p.pdg_id));
+                                ui.label(pdg_id_name(p.pdg_id));
+                                ui.label(format!("{}", p.status));
+                                ui.label(format!("{:.4}", p.px));
+                                ui.label(format!("{:.4}", p.py));
+                                ui.label(format!("{:.4}", p.pz));
+                                ui.label(format!("{:.4}", p.energy));
+                                ui.label(format!("{:.4}", p.mass));
+                                ui.end_row();
+                            }
+                        });
                 });
-        });
+
+            // Vertex information
+            if !event.vertices.is_empty() {
+                ui.separator();
+                ui.collapsing("🔗 Vertices", |ui| {
+                    egui::Grid::new("vertex_grid")
+                        .num_columns(5)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("ID");
+                            ui.strong("Position (x,y,z,t)");
+                            ui.strong("Incoming");
+                            ui.strong("Outgoing");
+                            ui.strong("Type");
+                            ui.end_row();
+
+                            for v in &event.vertices {
+                                ui.label(format!("{}", v.id));
+                                ui.label(format!(
+                                    "({:.2}, {:.2}, {:.2}, {:.2})",
+                                    v.x, v.y, v.z, v.t
+                                ));
+                                ui.label(format!("{:?}", v.incoming));
+                                ui.label(format!("{:?}", v.outgoing));
+                                let vtype = if v.incoming.is_empty() {
+                                    "Initial"
+                                } else {
+                                    "Interaction"
+                                };
+                                ui.label(vtype);
+                                ui.end_row();
+                            }
+                        });
+                });
+            }
+        }
+        EventView::Raw => {
+            egui::ScrollArea::vertical()
+                .max_height(400.0)
+                .show(ui, |ui| {
+                    let json = serde_json::to_string_pretty(&event).unwrap_or_else(|_| "Failed to serialize JSON".to_string());
+                    ui.add(
+                        egui::TextEdit::multiline(&mut json.as_str())
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(f32::INFINITY)
+                            .interactive(false),
+                    );
+                });
+        }
+        EventView::Plot => {
+            render_simple_event_display(event, &filtered_particles, ui);
+        }
     }
-
-    // Simplified event display
-    ui.separator();
-    render_simple_event_display(event, &filtered_particles, ui);
 }
 
 /// A simplified graphical event display showing particle flow.

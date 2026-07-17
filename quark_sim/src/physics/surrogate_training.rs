@@ -44,8 +44,8 @@ pub fn generate_dataset(
     let mut data = Vec::new();
 
     // Logarithmic grid for x and Q²
-    let x_vals = log_space(1e-5, 0.8, 40);
-    let q2_vals = log_space(3.5, 10000.0, 40);
+    let x_vals = log_space(1e-5, 0.8, 5);
+    let q2_vals = log_space(3.5, 10000.0, 5);
     let mu_f_ratios = [0.5, 1.0, 2.0];
     let mu_r_ratios = [0.5, 1.0, 2.0];
 

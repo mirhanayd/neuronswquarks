@@ -7,10 +7,19 @@ use eframe::egui;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use egui_plot::{Bar, BarChart, Legend, Plot};
+
 use super::state::{
     BackendProcess, DisConfig, GuiError, GuiErrorCategory, InclusiveResult, ProcessStatus,
 };
 use super::worker::{self, WorkerHandle, WorkerMessage};
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum InclusiveView {
+    Visualized,
+    Raw,
+    Plot,
+}
 
 /// State for the inclusive calculation page.
 pub struct InclusivePageState {
@@ -19,6 +28,7 @@ pub struct InclusivePageState {
     pub result: Option<InclusiveResult>,
     pub process: BackendProcess,
     pub worker: Option<WorkerHandle>,
+    pub view_mode: InclusiveView,
 }
 
 impl Default for InclusivePageState {
@@ -29,6 +39,7 @@ impl Default for InclusivePageState {
             result: None,
             process: BackendProcess::default(),
             worker: None,
+            view_mode: InclusiveView::Visualized,
         }
     }
 }
@@ -130,9 +141,18 @@ pub fn render_inclusive_page(
     // Display results
     if let Some(ref result) = state.result {
         ui.separator();
-        ui.heading("Results");
+        ui.horizontal(|ui| {
+            ui.heading("Results");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.selectable_value(&mut state.view_mode, InclusiveView::Plot, "📈 Plot");
+                ui.selectable_value(&mut state.view_mode, InclusiveView::Raw, "📄 Raw JSON");
+                ui.selectable_value(&mut state.view_mode, InclusiveView::Visualized, "📊 Visualized");
+            });
+        });
 
-        egui::Grid::new("inclusive_result_grid")
+        match state.view_mode {
+            InclusiveView::Visualized => {
+                egui::Grid::new("inclusive_result_grid")
             .num_columns(2)
             .spacing([20.0, 6.0])
             .striped(true)
@@ -223,6 +243,103 @@ pub fn render_inclusive_page(
                     });
             });
         }
+            } // end Visualized
+            InclusiveView::Raw => {
+                egui::ScrollArea::vertical()
+                    .max_height(400.0)
+                    .show(ui, |ui| {
+                        let json = serde_json::to_string_pretty(&result).unwrap_or_else(|_| "Failed to serialize JSON".to_string());
+                        ui.add(
+                            egui::TextEdit::multiline(&mut json.as_str())
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(f32::INFINITY)
+                                .interactive(false),
+                        );
+                    });
+            }
+            InclusiveView::Plot => {
+                ui.add_space(8.0);
+                
+                let mut bars = Vec::new();
+                let is_partons = !result.parton_densities.is_empty();
+                
+                if is_partons {
+                    let pdg_ids: Vec<i32> = result.parton_densities.iter().map(|(id, _)| *id).collect();
+                    
+                    let parton_name = |pdg_id: i32| -> &'static str {
+                        match pdg_id {
+                            0 | 21 => "g",
+                            1 => "d",
+                            2 => "u",
+                            3 => "s",
+                            4 => "c",
+                            5 => "b",
+                            6 => "t",
+                            -1 => "d̄",
+                            -2 => "ū",
+                            -3 => "s̄",
+                            -4 => "c̄",
+                            -5 => "b̄",
+                            -6 => "t̄",
+                            _ => "?",
+                        }
+                    };
+
+                    for (i, (pdg_id, xf)) in result.parton_densities.iter().enumerate() {
+                        bars.push(
+                            Bar::new(i as f64, *xf)
+                                .name(parton_name(*pdg_id))
+                        );
+                    }
+                    
+                    let chart = BarChart::new(bars)
+                        .name("x·f(x, Q²)")
+                        .color(egui::Color32::from_rgb(100, 200, 150));
+                    
+                    Plot::new("inclusive_parton_plot")
+                        .view_aspect(2.5)
+                        .legend(Legend::default())
+                        .y_axis_formatter(|mark, _max_chars, _range| format!("{:.1e}", mark.value))
+                        .x_axis_formatter(move |mark, _max_chars, _range| {
+                            let idx = mark.value.round() as usize;
+                            if idx < pdg_ids.len() {
+                                parton_name(pdg_ids[idx]).to_string()
+                            } else {
+                                String::new()
+                            }
+                        })
+                        .show(ui, |plot_ui| {
+                            plot_ui.bar_chart(chart);
+                        });
+                } else {
+                    // If no parton densities, plot F2, FL, xF3
+                    bars.push(Bar::new(0.0, result.f2).name("F₂"));
+                    bars.push(Bar::new(1.0, result.fl).name("F_L"));
+                    bars.push(Bar::new(2.0, result.xf3).name("xF₃"));
+                    
+                    let chart = BarChart::new(bars)
+                        .name("Structure Functions")
+                        .color(egui::Color32::from_rgb(100, 150, 250));
+                        
+                    let names = vec!["F₂", "F_L", "xF₃"];
+                    Plot::new("inclusive_sf_plot")
+                        .view_aspect(2.5)
+                        .legend(Legend::default())
+                        .y_axis_formatter(|mark, _max_chars, _range| format!("{:.1e}", mark.value))
+                        .x_axis_formatter(move |mark, _max_chars, _range| {
+                            let idx = mark.value.round() as usize;
+                            if idx < names.len() {
+                                names[idx].to_string()
+                            } else {
+                                String::new()
+                            }
+                        })
+                        .show(ui, |plot_ui| {
+                            plot_ui.bar_chart(chart);
+                        });
+                }
+            }
+        }
     }
 
     // Logs
@@ -298,18 +415,38 @@ fn parse_inclusive_result(state: &mut InclusivePageState) {
     // The structure-functions command outputs JSON. Try to parse it.
     let combined = state.process.stdout_lines.join("\n");
 
-    // Try to find a JSON block in the output.
     if let Some(start) = combined.find('{') {
         if let Some(end) = combined.rfind('}') {
             let json_str = &combined[start..=end];
-            if let Ok(result) = serde_json::from_str::<InclusiveResult>(json_str) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(json_str) {
+                let x = state.calc_x.parse().unwrap_or(0.0);
+                let q2 = state.calc_q2.parse().unwrap_or(0.0);
+                let y = if x > 0.0 { q2 / (101200.0 * x) } else { 0.0 };
+                let w2 = 101200.0 * y * (1.0 - x) + 0.88; // roughly
+
+                let result = InclusiveResult {
+                    x,
+                    q2_gev2: q2,
+                    y,
+                    w2_gev2: w2,
+                    f2: value.get("f2").or_else(|| value.get("F2")).and_then(|v| v.as_f64()).unwrap_or(0.0),
+                    fl: value.get("fl").or_else(|| value.get("FL")).and_then(|v| v.as_f64()).unwrap_or(0.0),
+                    xf3: value.get("xf3").or_else(|| value.get("xF3")).and_then(|v| v.as_f64()).unwrap_or(0.0),
+                    dsigma_dxdq2_gev_m4: 0.0,
+                    dsigma_dxdq2_pb_gev2: 0.0,
+                    parton_densities: vec![],
+                    backend_name: value.get("metadata").and_then(|m| m.get("backend")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    order: value.get("metadata").and_then(|m| m.get("order")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    pdf_set: value.get("metadata").and_then(|m| m.get("pdf_set")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    pdf_member: value.get("metadata").and_then(|m| m.get("pdf_member")).and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                    scheme: value.get("metadata").and_then(|m| m.get("scheme")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                };
+                
                 state.result = Some(result);
                 return;
             }
         }
     }
-
-    // Fallback: no JSON found, leave result as None.
 }
 
 /// Map PDG ID to particle name.

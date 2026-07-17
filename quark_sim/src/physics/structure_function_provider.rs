@@ -265,6 +265,20 @@ pub struct StructureFunctionMetadata {
     pub mu_r_over_q: f64,
     pub scheme: String,
     pub electromagnetic_mode: String,
+    #[serde(default)]
+    pub os_arch: Option<String>,
+    #[serde(default)]
+    pub rust_version: Option<String>,
+    #[serde(default)]
+    pub git_commit: Option<String>,
+    #[serde(default)]
+    pub git_dirty: Option<bool>,
+    #[serde(default)]
+    pub pythia_version: Option<String>,
+    #[serde(default)]
+    pub hepmc_version: Option<String>,
+    #[serde(default)]
+    pub python_env_hash: Option<String>,
 }
 
 /// Backend-independent inclusive structure functions at one `(x, Q²)` point.
@@ -422,8 +436,15 @@ impl<P: PdfProvider> StructureFunctionProvider for LoPdfStructureFunctionProvide
                 target: request.target,
                 mu_f_over_q: request.mu_f_over_q,
                 mu_r_over_q: request.mu_r_over_q,
-                scheme: LO_PARTON_MODEL_SCHEME.to_owned(),
-                electromagnetic_mode: PHOTON_EXCHANGE_MODE.to_owned(),
+                scheme: "LO".to_string(),
+                electromagnetic_mode: "photon_exchange".to_string(),
+                os_arch: None,
+                rust_version: None,
+                git_commit: None,
+                git_dirty: None,
+                pythia_version: None,
+                hepmc_version: None,
+                python_env_hash: None,
             },
         };
         result.validate_finite()?;

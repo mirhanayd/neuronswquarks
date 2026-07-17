@@ -242,6 +242,13 @@ impl StructureFunctionProvider for SurrogateProvider {
                 mu_r_over_q: request.mu_r_over_q,
                 scheme: SURROGATE_SCHEME.to_string(),
                 electromagnetic_mode: PHOTON_EXCHANGE_MODE.to_string(),
+                os_arch: None,
+                rust_version: None,
+                git_commit: None,
+                git_dirty: None,
+                pythia_version: None,
+                hepmc_version: None,
+                python_env_hash: None,
             },
         })
     }
