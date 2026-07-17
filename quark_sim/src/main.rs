@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use gui::{launch_gui, AppData, InteractiveContext};
+use gui::launch_gui;
+use gui::legacy_cornell::{AppData, InteractiveContext};
 use plotting::plot_results;
 use quark_sim::physics::{
     collider_beams, compute_dis_kinematics, evaluate_lo_structure_functions, exact_inelasticity,
@@ -171,8 +172,10 @@ enum Command {
     DisKinematics(DisCommand),
     DisCrossSection(CrossSectionCommand),
     GenerateDisEvents(GenerateDisEventsCommand),
+    StructureFunctions(StructureFunctionsCliArgs),
     ValidateHera(ValidateHeraCliArgs),
     TheoryUncertainties(TheoryUncertaintiesCliArgs),
+    TrainSurrogate(TrainSurrogateCliArgs),
     Help,
 }
 
@@ -208,6 +211,18 @@ struct GenerateDisEventsCliArgs {
     hadronization: bool,
     #[serde(skip)]
     output: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct StructureFunctionsCliArgs {
+    backend: String,
+    x: f64,
+    q2: f64,
+    order: String,
+    pdf_set: String,
+    pdf_member: i32,
+    mu_f_over_q: f64,
+    mu_r_over_q: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -256,6 +271,14 @@ struct TheoryUncertaintiesCliArgs {
     output: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct TrainSurrogateCliArgs {
+    pdf_set: String,
+    pdf_member: i32,
+    order: String,
+    output: PathBuf,
+}
+
 fn main() -> Result<()> {
     let command = parse_command(std::env::args().skip(1)).map_err(|message| {
         eprintln!("Error: {message}\n\n{HELP}");
@@ -297,11 +320,17 @@ fn main() -> Result<()> {
             print!("{GENERATE_DIS_EVENTS_HELP}");
             Ok(())
         }
+        Command::StructureFunctions(arguments) => {
+            run_structure_functions(arguments)
+        }
         Command::ValidateHera(arguments) => {
             run_validate_hera(arguments)
         }
         Command::TheoryUncertainties(arguments) => {
             run_theory_uncertainties(arguments)
+        }
+        Command::TrainSurrogate(arguments) => {
+            run_train_surrogate(arguments)
         }
         Command::Help => {
             print!("{HELP}");
@@ -329,6 +358,12 @@ fn parse_command(args: impl IntoIterator<Item = String>) -> std::result::Result<
         }
         [subcommand, remaining @ ..] if subcommand == "theory-uncertainties" => {
             parse_theory_uncertainties_command(remaining).map(Command::TheoryUncertainties)
+        }
+        [subcommand, remaining @ ..] if subcommand == "structure-functions" => {
+            parse_structure_functions_command(remaining).map(Command::StructureFunctions)
+        }
+        [subcommand, remaining @ ..] if subcommand == "train-surrogate" => {
+            parse_train_surrogate_command(remaining).map(Command::TrainSurrogate)
         }
         [flag, path] if flag == "--load" => Ok(Command::LoadSession(PathBuf::from(path))),
         [flag, path] if flag == "--load-model" => Ok(Command::LoadModel(PathBuf::from(path))),
@@ -664,7 +699,7 @@ fn run_training() -> Result<()> {
 
     let electron_data = electrons
         .iter()
-        .map(|electron| gui::ElectronData {
+        .map(|electron| crate::gui::legacy_cornell::ElectronData {
             trajectory: electron.trajectory.clone(),
             impact_parameter: electron.impact_parameter,
         })
@@ -726,7 +761,7 @@ fn run_with_pretrained_model(model_path: &Path, config_path: &Path) -> Result<()
 
     let electron_data = electrons
         .iter()
-        .map(|electron| gui::ElectronData {
+        .map(|electron| crate::gui::legacy_cornell::ElectronData {
             trajectory: electron.trajectory.clone(),
             impact_parameter: electron.impact_parameter,
         })
@@ -1263,6 +1298,166 @@ fn run_theory_uncertainties(arguments: TheoryUncertaintiesCliArgs) -> Result<()>
         println!("Warning: summary.json not found under {}", summary_path.display());
     }
     
+    Ok(())
+}
+fn parse_structure_functions_command(args: &[String]) -> std::result::Result<StructureFunctionsCliArgs, String> {
+    let mut backend = None;
+    let mut x = None;
+    let mut q2 = None;
+    let mut order = None;
+    let mut pdf_set = None;
+    let mut pdf_member = None;
+    let mut mu_f_over_q = 1.0;
+    let mut mu_r_over_q = 1.0;
+    let mut index = 0;
+
+    while index < args.len() {
+        let flag = args[index].as_str();
+        let value_text = args
+            .get(index + 1)
+            .ok_or_else(|| format!("{flag} requires a value"))?;
+
+        match flag {
+            "--backend" => backend = Some(value_text.clone()),
+            "--x" => x = Some(parse_finite_cross_number("--x", value_text)?),
+            "--q2" => q2 = Some(parse_finite_cross_number("--q2", value_text)?),
+            "--order" => order = Some(value_text.clone()),
+            "--pdf-set" => pdf_set = Some(value_text.clone()),
+            "--pdf-member" => {
+                pdf_member = Some(value_text.parse::<i32>().map_err(|_| format!("invalid integer for --pdf-member: {value_text}"))?);
+            }
+            "--mu-f-over-q" => mu_f_over_q = parse_finite_cross_number("--mu-f-over-q", value_text)?,
+            "--mu-r-over-q" => mu_r_over_q = parse_finite_cross_number("--mu-r-over-q", value_text)?,
+            _ => return Err(format!("unknown option: {flag}")),
+        }
+        index += 2;
+    }
+
+    Ok(StructureFunctionsCliArgs {
+        backend: backend.ok_or_else(|| "missing required option: --backend".to_owned())?,
+        x: x.ok_or_else(|| "missing required option: --x".to_owned())?,
+        q2: q2.ok_or_else(|| "missing required option: --q2".to_owned())?,
+        order: order.ok_or_else(|| "missing required option: --order".to_owned())?,
+        pdf_set: pdf_set.ok_or_else(|| "missing required option: --pdf-set".to_owned())?,
+        pdf_member: pdf_member.unwrap_or(0),
+        mu_f_over_q,
+        mu_r_over_q,
+    })
+}
+
+fn run_structure_functions(args: StructureFunctionsCliArgs) -> Result<()> {
+    use quark_sim::physics::structure_function_provider::{
+        StructureFunctionBackend, StructureFunctionProvider, StructureFunctionRequest,
+        PerturbativeOrder, StructureFunctionProcess, DisProjectile, DisTarget,
+    };
+    use quark_sim::physics::apfel::ApfelStructureFunctionProvider;
+    use quark_sim::physics::surrogate::SurrogateProvider;
+    use quark_sim::physics::LoPdfStructureFunctionProvider;
+    use quark_sim::physics::LhapdfProvider;
+    use std::str::FromStr;
+
+    let order = PerturbativeOrder::from_str(&args.order).map_err(|_| {
+        Error::Msg(format!("Invalid perturbative order: {}", args.order))
+    })?;
+
+    let mut request = StructureFunctionRequest::electromagnetic_nc(
+        args.x,
+        args.q2,
+        order,
+        args.pdf_set.clone(),
+        args.pdf_member,
+    );
+    request.mu_f_over_q = args.mu_f_over_q;
+    request.mu_r_over_q = args.mu_r_over_q;
+
+    let result = match args.backend.as_str() {
+        "apfel" => {
+            let provider = ApfelStructureFunctionProvider::new("physics-engine/build/apfel_cli");
+            provider.evaluate(&request)
+        }
+        "surrogate" => {
+            let dir = std::env::current_dir().unwrap().join("models/surrogate_v1");
+            let provider = SurrogateProvider::load(&dir)
+                .map_err(|e| Error::Msg(e.to_string()))?;
+            provider.evaluate(&request)
+        }
+        "lo" => {
+            let pdf = LhapdfProvider::new(&args.pdf_set, args.pdf_member)
+                .map_err(|e| Error::Msg(e.to_string()))?;
+            let provider = LoPdfStructureFunctionProvider::new(pdf, &args.pdf_set, args.pdf_member, 0, 0)
+                .map_err(|e| Error::Msg(e.to_string()))?;
+            provider.evaluate(&request)
+        }
+        other => return Err(Error::Msg(format!("Unsupported backend: {other}"))),
+    }.map_err(|e| Error::Msg(e.to_string()))?;
+
+    let json = serde_json::to_string(&result).map_err(|e| Error::Msg(e.to_string()))?;
+    println!("{}", json);
+
+    Ok(())
+}
+
+fn parse_train_surrogate_command(args: &[String]) -> std::result::Result<TrainSurrogateCliArgs, String> {
+    let mut pdf_set = None;
+    let mut pdf_member = None;
+    let mut order = None;
+    let mut output = None;
+    let mut index = 0;
+
+    while index < args.len() {
+        let flag = args[index].as_str();
+        let value_text = args
+            .get(index + 1)
+            .ok_or_else(|| format!("{flag} requires a value"))?;
+
+        match flag {
+            "--pdf-set" => pdf_set = Some(value_text.clone()),
+            "--pdf-member" => {
+                let parsed = value_text
+                    .parse::<i32>()
+                    .map_err(|_| format!("invalid integer for --pdf-member: {value_text}"))?;
+                pdf_member = Some(parsed);
+            }
+            "--order" => order = Some(value_text.clone()),
+            "--output" => output = Some(PathBuf::from(value_text)),
+            _ => return Err(format!("unknown option: {flag}")),
+        }
+        index += 2;
+    }
+
+    Ok(TrainSurrogateCliArgs {
+        pdf_set: pdf_set.ok_or_else(|| "missing required option: --pdf-set".to_owned())?,
+        pdf_member: pdf_member.unwrap_or(0),
+        order: order.unwrap_or_else(|| "NLO".to_string()),
+        output: output.ok_or_else(|| "missing required option: --output".to_owned())?,
+    })
+}
+
+fn run_train_surrogate(arguments: TrainSurrogateCliArgs) -> Result<()> {
+    use quark_sim::physics::apfel::ApfelStructureFunctionProvider;
+    use quark_sim::physics::structure_function_provider::PerturbativeOrder;
+    use quark_sim::physics::surrogate_training::{generate_dataset, train_and_save_surrogate};
+    use std::str::FromStr;
+
+    println!("Starting surrogate dataset generation and training...");
+    
+    let order = PerturbativeOrder::from_str(&arguments.order).map_err(|_| {
+        Error::Msg(format!("Invalid perturbative order: {}", arguments.order))
+    })?;
+
+    let provider = ApfelStructureFunctionProvider::new("physics-engine/build/apfel_cli");
+    
+    let dataset = generate_dataset(&provider, &arguments.pdf_set, arguments.pdf_member, order)
+        .map_err(|e| Error::Msg(e.to_string()))?;
+
+    train_and_save_surrogate(
+        dataset,
+        &arguments.output,
+        arguments.pdf_set,
+        arguments.pdf_member,
+        order,
+    ).map_err(|e| Error::Msg(e.to_string()))?;
+
     Ok(())
 }
 

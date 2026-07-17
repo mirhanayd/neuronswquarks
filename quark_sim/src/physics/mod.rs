@@ -12,6 +12,8 @@ pub mod legacy_cornell;
 pub mod pdf;
 pub mod structure_function_provider;
 pub mod structure_functions;
+pub mod surrogate;
+pub mod surrogate_training;
 
 pub use apfel::{
     ApfelProtocolError, ApfelProtocolResponse, ApfelStructureFunctionProvider,
@@ -42,3 +44,5 @@ pub use structure_functions::{
     StructureFunctionError, DOWN_TYPE_CHARGE_SQUARED, LO_LONGITUDINAL_STRUCTURE_FUNCTION,
     LO_PARITY_VIOLATING_STRUCTURE_FUNCTION, UP_TYPE_CHARGE_SQUARED,
 };
+pub use surrogate::{SurrogateConfig, SurrogateModel, SurrogateProvider, SURROGATE_SCHEME};
+pub use surrogate_training::{generate_dataset, train_and_save_surrogate, SurrogateDataPoint};

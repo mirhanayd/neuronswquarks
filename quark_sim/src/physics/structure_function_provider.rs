@@ -134,6 +134,7 @@ impl fmt::Display for DisTarget {
 pub enum StructureFunctionBackend {
     LoPdf,
     Apfel,
+    Surrogate,
 }
 
 impl fmt::Display for StructureFunctionBackend {
@@ -141,6 +142,7 @@ impl fmt::Display for StructureFunctionBackend {
         match self {
             Self::LoPdf => formatter.write_str("lo_pdf"),
             Self::Apfel => formatter.write_str("apfel"),
+            Self::Surrogate => formatter.write_str("surrogate"),
         }
     }
 }
@@ -512,6 +514,12 @@ pub enum StructureFunctionProviderError {
         quantity: &'static str,
         value: f64,
     },
+    OutOfDomain {
+        x: f64,
+        q2: f64,
+        reason: String,
+    },
+    EvaluationFailed(String),
 }
 
 impl fmt::Display for StructureFunctionProviderError {
@@ -616,6 +624,14 @@ impl fmt::Display for StructureFunctionProviderError {
             Self::NonFiniteResult { quantity, value } => {
                 write!(formatter, "backend returned non-finite {quantity}={value}")
             }
+            Self::OutOfDomain { x, q2, reason } => write!(
+                formatter,
+                "surrogate model rejected point x={x}, Q2={q2}: {reason}"
+            ),
+            Self::EvaluationFailed(message) => write!(
+                formatter,
+                "provider evaluation failed: {message}"
+            ),
         }
     }
 }
