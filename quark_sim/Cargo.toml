@@ -3,23 +3,24 @@ name = "quark_sim"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+cuda = [
+    "candle-core/cuda",
+    "candle-nn/cuda",
+]
+
 [dependencies]
-# Candle: Rust için minimalist ML framework (Hugging Face)
-candle-core = { version = "0.9.1", default-features = false }
-candle-nn = { version = "0.9.1", default-features = false }
-safetensors = "0.4"
-# Rastgele sayı üretimi için
-rand = "0.8"
-# Grafik çizimi için
-plotters = "0.3"
-# Tarih/saat için
+candle-core = { version = "0.8.4", default-features = false }
+candle-nn = { version = "0.8.4", default-features = false }
 chrono = "0.4"
-# Terminal içi grafik
-textplots = "0.8"
-# İnteraktif GUI için
-eframe = "0.29"
-egui = "0.29"
-egui_plot = "0.29"
-# JSON serileştirme
+csv = "1.3"
+eframe = "0.26.2"
+egui = "0.26.2"
+egui_plot = "0.26.2"
+managed-lhapdf = { version = "=0.4.2", default-features = false }
+plotters = "0.3.7"
+rand = "0.8.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+textplots = "0.8.7"
