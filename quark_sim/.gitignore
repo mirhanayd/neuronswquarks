@@ -1,5 +1,7 @@
 # Rust derleme dosyaları
 /target/
+/.external/
+/physics-engine/build/
 **/*.rs.bk
 *.pdb
 
