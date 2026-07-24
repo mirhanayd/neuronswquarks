@@ -1,0 +1,25 @@
+{
+  "title": "Neural QCD: Cornell Potential & DIS",
+  "slug": "neuronswquarks",
+  "year": "2025",
+  "status": "Completed",
+  "featured": true,
+  "role": "Research Software Developer",
+  "shortDescription": "A Rust-based quantum chromodynamics simulation that trains a neural network on the Cornell potential and visualizes deep inelastic electron-quark scattering through an interactive desktop interface.",
+  "technologies": [
+    "Rust",
+    "Candle",
+    "egui",
+    "Plotters",
+    "Serde"
+  ],
+  "githubUrl": "https://github.com/mirhanayd/neuronswquarks",
+  "liveUrl": "https://github.com/mirhanayd/neuronswquarks",
+  "coverImage": "cover.png",
+  "highlights": [
+    "Four-layer neural network trained to approximate the Cornell quark-antiquark potential.",
+    "Deep inelastic scattering simulation with electron trajectories and angular statistics.",
+    "Interactive three-panel GUI for training loss, potential comparison, and scattering paths.",
+    "JSON session persistence and timestamped scientific plot exports for reproducible runs."
+  ]
+}
